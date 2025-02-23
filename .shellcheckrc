@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# SC2034: Unused variables.  Ignoring because the variables set in the build.sh
+#         are used by the scripts and remain set there for the sake of config
+# SC1090: Shellcheck cannot follow non-specific includes.  Because build.sh
+#         includes files based on generated variables, ShellCheck cannot be 
+#         expected to follow along
+# SC1091: ShellCheck not following. Disabled becuase of the number of variable
+#         derived includes
+# SC2015: A && B || C is a powerful checker pattern as it allows C to execute
+#         as an error handler for a chain of dependent executions.  This
+#         pattern is leveraged heavily within these scripts in the following
+#         manner:
+#         can_act && act || error "Cannot act"
+# SC2317: the library scripts are composed of functions which are expected to
+#         be invoked outside of the libraries themselves.  This disables the
+#         callout that functions are defined and not called.
+disable=SC2034,SC1090,SC1091,SC2015,SC2317
