@@ -1,5 +1,5 @@
 # Certificates
-certs/*.pem
+**/*.pem
 
 # Environment file containing credentials or sensitive information
 .env
