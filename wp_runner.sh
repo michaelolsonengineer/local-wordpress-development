@@ -98,7 +98,8 @@ __script_init() { # Optional
 #       architecture enforces good script writing practices and reduces script
 #       boilerplate for error handling.
 __script_exec() { # Required
-  echo "Hello World!!!!"
+  # docker compose up --build
+  exit 1
 }
 
 # __script_succeed (optional)
@@ -114,21 +115,29 @@ __script_succeed() { # Optional
 #       to provide feedback to the user about the failure and trigger
 #       post-script-failed logic.
 __script_failed() { # Optional
-  error "Could not execute wp_runner.sh successfully"
+  echoing INFO "Could not execute wp_runner.sh successfully"
+
+  docker container list
+  docker volume list
+  docker compose down
+  docker volume rm wp_wordpress wp_dbdata
+  sudo rm -rf src/
+
 }
 
-# __script_cleanup (optional)
-#       If defined, __script_cleanup is run as the very last step of
+# __script_cleanup
+#       __script_cleanup is run as the very last step of
 #       execute script, after __script_succeed/__script_failed.  This can be
 #       leveraged to perform any necessary cleanup regardless of the scripts
 #       exit status
-__script_cleanup() { # Optional
+__script_cleanup() {
   if [ $? -eq 0 ]; then
     __script_succeed
   else
     __script_failed
   fi
 
+  # Optional
   # echoing INFO "Cleaning up potential dirty state ..."
 }
 
