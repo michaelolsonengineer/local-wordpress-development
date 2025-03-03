@@ -98,8 +98,8 @@ __script_init() { # Optional
 #       architecture enforces good script writing practices and reduces script
 #       boilerplate for error handling.
 __script_exec() { # Required
-  # docker compose up --build
-  exit 1
+  docker compose up --build
+  #exit 1
 }
 
 # __script_succeed (optional)
