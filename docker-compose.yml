@@ -1,80 +1,113 @@
+version: '3'
+
 services:
-  nginx:
-    container_name: ${CONTAINER_NAME}-nginx
-    build:
-      context: .
-      dockerfile: ./nginx/Dockerfile
-    # image: nginx:1.15.12-alpine
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      DOMAIN_NAME: ${DOMAIN_NAME}
-    ports:
-      - "80:80"
-      - "443:443"
-      # - "8080:80"
-    volumes:
-      - wordpress:/var/www/html
-      # - ./nginx:/etc/nginx/conf.d:rw
-    networks:
-      - internal
+    webserver:
+        depends_on:
+            - wordpress
+        container_name: ${CONTAINER_NAME}-nginx
+        # build:
+        #   context: .
+        #   dockerfile: ./nginx/Dockerfile
+        image: nginx:1.19-alpine
+        restart: unless-stopped
+        env_file: .env
+        environment: # Since nginx 1.19 you can now use environment variables in your configuration with docker-compose.
+            API_HOST: ${DOMAIN_NAME}
+        ports:
+            - '80:80'
+            - '443:443'
+        volumes:
+            - wordpress_volume:/var/www/html
+            - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:rw
+            - certbot-etc:/etc/letsencrypt
+        networks:
+            - app-network
 
-  database:
-    container_name: ${CONTAINER_NAME}-database
-    image: mysql:8.0
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      MYSQL_DATABASE: ${DATABASE_NAME}
-      MYSQL_PASSWORD: ${DATABASE_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DATABASE_ROOT_PASSWORD}
-      MYSQL_USER: ${DATABASE_USER}
-    healthcheck:
-      test: [ "CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u", "root", "-p$$DATABASE_ROOT_PASSWORD" ]
-      timeout: 20s
-      retries: 10
-    ports:
-      - "3306:3306"
-    volumes:
-      - dbdata:/var/lib/mysql
-    networks:
-      - internal
+    database:
+        container_name: ${CONTAINER_NAME}-database
+        image: mysql:8.0
+        restart: unless-stopped
+        env_file: .env
+        environment:
+            MYSQL_DATABASE: ${DATABASE_NAME}
+            MYSQL_PASSWORD: ${DATABASE_PASSWORD}
+            MYSQL_ROOT_PASSWORD: ${DATABASE_ROOT_PASSWORD}
+            MYSQL_USER: ${DATABASE_USER}
+        healthcheck:
+            test:
+                [
+                    'CMD',
+                    'mysqladmin',
+                    'ping',
+                    '-h',
+                    'localhost',
+                    '-u',
+                    'root',
+                    '-p$$DATABASE_ROOT_PASSWORD',
+                ]
+            timeout: 20s
+            retries: 10
+        ports:
+            - '3306:3306'
+        volumes:
+            - dbdata:/var/lib/mysql
+        command: '--default-authentication-plugin=mysql_native_password'
+        networks:
+            - app-network
 
-  phpmyadmin:
-    container_name: ${CONTAINER_NAME}-phpmyadmin
-    image: phpmyadmin/phpmyadmin
-    env_file: .env
-    environment:
-      PMA_HOST: database
-      PMA_PORT: 3306
-      MYSQL_ROOT_PASSWORD: "${DATABASE_ROOT_PASSWORD}"
-    ports:
-      - "8081:80"
-    networks:
-      - internal
+    phpmyadmin:
+        container_name: ${CONTAINER_NAME}-phpmyadmin
+        image: phpmyadmin/phpmyadmin
+        env_file: .env
+        environment:
+            PMA_HOST: database
+            PMA_PORT: 3306
+            MYSQL_ROOT_PASSWORD: '${DATABASE_ROOT_PASSWORD}'
+        ports:
+            - '8081:80'
+        networks:
+            - app-network
 
-  wordpress:
-    depends_on:
-      - database
-    container_name: ${CONTAINER_NAME}-wordpress
-    image: wordpress:6.5.2-fpm-alpine
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      WORDPRESS_DB_HOST: database:3306  # use the same name as database service
-      WORDPRESS_DB_NAME: '${DATABASE_NAME}'
-      WORDPRESS_DB_USER: '${DATABASE_USER}'
-      WORDPRESS_DB_PASSWORD: '${DATABASE_PASSWORD}'
-    volumes:
-      - wordpress:/var/www/html
-      - ./src:/var/www/html/wp-content:rw
-    networks:
-      - internal
+    certbot:
+        depends_on:
+            - webserver
+        image: certbot/certbot
+        container_name: certbot
+        env_file: .env
+        environment:
+            DOMAIN_NAME: ${DOMAIN_NAME}
+            WORDPRESS_ADMIN_EMAIL: ${WORDPRESS_ADMIN_EMAIL}
+        volumes:
+            - certbot-etc:/etc/letsencrypt
+            - wordpress_volume:/var/www/html
+        command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}
+
+    # app
+    wordpress:
+        depends_on:
+            - database
+        container_name: ${CONTAINER_NAME}-wordpress
+        image: wordpress:6.5.2-fpm-alpine
+        restart: unless-stopped
+        env_file: .env
+        environment:
+            WORDPRESS_DB_HOST: database:3306 # use the same name as database service
+            WORDPRESS_DB_NAME: '${DATABASE_NAME}'
+            WORDPRESS_DB_USER: '${DATABASE_USER}'
+            WORDPRESS_DB_PASSWORD: '${DATABASE_PASSWORD}'
+        extra_hosts:
+            - 'host.docker.internal:host-gateway'
+        volumes:
+            - wordpress_volume:/var/www/html
+            - ./src:/var/www/html/wp-content:rw
+        networks:
+            - app-network
 
 volumes:
-  dbdata:
-  wordpress:
+    certbot-etc:
+    wordpress_filesystem:
+    dbdata:
 
 networks:
-  internal:
-    driver: bridge
+    app-network:
+        driver: bridge
