@@ -1,43 +1,9 @@
 #!/bin/bash
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 ##########################################################
 # Adapted original bash template script from Kyle Smith
 ##########################################################
 
-# ===== error =====
-# Description: Helper function to cleanly exit a shell when a catastrophic
-#   error has occurred
-# How to Use: Call when an unrecoverable catastrophe has occurred in the
-#   Current shell:
-#       error "${message}" "callback expression"
-#   Can also be called with no message, or no callback:
-#       error "" "callback expression"
-#       error "${message}"
-# Inputs:
-#   _message (optional): Error message to log, optional w/ callback as ""
-#   _callback (optional): Callback expression to be evaluated with eval after
-#       printing the message and before exiting with an error
-# Side Effects:
-#   Optionally prints the error message and then optionally evaluates the
-#   callback. Finally exits with an error code of 1
-error() {
-  local _message="${1-}"
-  local _callback="${2-}"
-
-  [ -n "${_message}" ] &&
-    echoing ERROR "${_message}"
-
-  [ -n "${_callback}" ] &&
-    eval "${_callback}"
-
-  exit 1
-}
-
-echoing() {
-  echo -e "${1}: ${2}"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # __script_help
 #       Called by the help script, this function should print out a help
@@ -47,14 +13,15 @@ echoing() {
 #       have been called in the current context
 __script_help() { # Required
   cat <<EOM
-===== script_template ====
+===== $0 ====
 
 # Description:
     <Briefly Describe Scripts Purpose>
 
 # How to Use:
     <Sample Use Case>
-        ./wp_runner.sh <...>
+        # in ${SCRIPT_DIR}
+        ./$0 <...>
 
 # Inputs:
     env:
@@ -89,7 +56,7 @@ __script_parse_opts() { # Optional
 #       This stage is useful for ensuring build tools are present, and ensuring
 #       the necessary environment variables are set.
 __script_init() { # Optional
-  echoing INFO "Initializing wp_runner.sh ..."
+  echoing INFO "Initializing $0 ..."
 }
 
 # __script_exec
@@ -107,7 +74,7 @@ __script_exec() { # Required
 #       used to provide feedback to the user about the success, or trigger
 #       post-script-success logic
 __script_succeed() { # Optional
-  echoing INFO "wp_runner.sh succeeded!"
+  echoing INFO "$0 succeeded!"
 }
 
 # __script_failed (optional)
@@ -115,7 +82,7 @@ __script_succeed() { # Optional
 #       to provide feedback to the user about the failure and trigger
 #       post-script-failed logic.
 __script_failed() { # Optional
-  echoing INFO "Could not execute wp_runner.sh successfully"
+  echoing INFO "Could not execute $0 successfully"
 
   docker container list
   docker volume list
@@ -123,6 +90,39 @@ __script_failed() { # Optional
   docker volume rm wp_wordpress wp_dbdata
   sudo rm -rf src/
 
+}
+
+# ===== error =====
+# Description: Helper function to cleanly exit a shell when a catastrophic
+#   error has occurred
+# How to Use: Call when an unrecoverable catastrophe has occurred in the
+#   Current shell:
+#       error "${message}" "callback expression"
+#   Can also be called with no message, or no callback:
+#       error "" "callback expression"
+#       error "${message}"
+# Inputs:
+#   _message (optional): Error message to log, optional w/ callback as ""
+#   _callback (optional): Callback expression to be evaluated with eval after
+#       printing the message and before exiting with an error
+# Side Effects:
+#   Optionally prints the error message and then optionally evaluates the
+#   callback. Finally exits with an error code of 1
+error() {
+  local _message="${1-}"
+  local _callback="${2-}"
+
+  [ -n "${_message}" ] &&
+    echoing ERROR "${_message}"
+
+  [ -n "${_callback}" ] &&
+    eval "${_callback}"
+
+  exit 1
+}
+
+echoing() {
+  echo -e "${1}: ${2}"
 }
 
 # __script_cleanup
