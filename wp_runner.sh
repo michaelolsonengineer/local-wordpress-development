@@ -3,7 +3,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ##########################################################
-# Adapted Template for script creation belongs Kyle Smith
+# Adapted original bash template script from Kyle Smith
 ##########################################################
 
 # ===== error =====
