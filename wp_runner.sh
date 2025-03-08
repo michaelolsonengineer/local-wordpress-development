@@ -3,7 +3,7 @@
 # Adapted original bash template script from Kyle Smith
 ##########################################################
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+declare -xg SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # __script_help
 #       Called by the help script, this function should print out a help
@@ -65,7 +65,9 @@ __script_init() { # Optional
 #       architecture enforces good script writing practices and reduces script
 #       boilerplate for error handling.
 __script_exec() { # Required
-  docker compose up --build
+  #docker compose up --build
+  docker compose up -d --force-recreate --no-deps webserver
+
   #exit 1
 }
 
@@ -87,7 +89,10 @@ __script_failed() { # Optional
   docker container list
   docker volume list
   docker compose down
-  docker volume rm wp_wordpress wp_dbdata
+  docker volume rm \
+    "${SCRIPT_DIR%/*}_wordpress_volume" \
+    "${SCRIPT_DIR%/*}_dbdata_volume" \
+    "${SCRIPT_DIR%/*}_certbot-etc_volume"
   sudo rm -rf src/
 
 }
