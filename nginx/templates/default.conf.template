@@ -2,6 +2,9 @@ server {
   listen 80;
   listen [::]:80;
 
+  # This config is temporary for starting up the server before SSL is enabled
+  # so we need to support both the domain and www subdomain for free domains
+  # which ever is used. But only one will work initially.
   server_name $NGINX_HOST www.$NGINX_HOST;
 
   index index.php index.html index.htm;
@@ -34,9 +37,11 @@ server {
   location = /favicon.ico {
     log_not_found off; access_log off;
   }
+
   location = /robots.txt {
     log_not_found off; access_log off; allow all;
   }
+
   location ~* \.(css|gif|ico|jpeg|jpg|js|png)$ {
     expires max;
     log_not_found off;
