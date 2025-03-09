@@ -3,6 +3,7 @@
 # Adapted original bash template script from Kyle Smith
 ##########################################################
 
+# shellcheck disable=SC2155
 declare -xg SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # __script_help
@@ -42,8 +43,9 @@ EOM
 #       stages. (see `declare -g` for setting global variables in a function)
 #       Note: arguments are not subsequently passed to __script_exec
 __script_parse_opts() { # Optional
-  declare -g ARG1="${1-}"
-  declare -g ARG2="${2-}"
+  echo "Parsing options for $0 ..."
+  # declare -xg ARG1="${1-}"
+  # declare -xg ARG2="${2-}"
 
   # [ -n "${ARG1-}" ] ||
   #   error "ARG1 must be passed"
@@ -66,7 +68,8 @@ __script_init() { # Optional
 #       boilerplate for error handling.
 __script_exec() { # Required
   #docker compose up --build
-  docker compose up -d --force-recreate --no-deps webserver
+  docker compose up -d
+  #--force-recreate --no-deps webserver
 
   #exit 1
 }
@@ -127,7 +130,7 @@ error() {
 }
 
 echoing() {
-  echo -e "${1}: ${2}"
+  echo -e "${1-}: ${2-}"
 }
 
 # __script_cleanup
