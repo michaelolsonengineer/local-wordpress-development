@@ -17,10 +17,10 @@ services:
             - '80:80'
             - '443:443'
         volumes:
-            - wordpress_volume:/var/www/html
-            - ./nginx/nginx-conf:/etc/nginx/conf.d
-            - ./nginx/templates:/etc/nginx/templates
             - certbot-etc_volume:/etc/letsencrypt
+            - wordpress_volume:/var/www/html
+            - ./nginx/templates:/etc/nginx/templates
+            - ./nginx/nginx-conf:/etc/nginx/conf.d
         networks:
             - app-network
 
