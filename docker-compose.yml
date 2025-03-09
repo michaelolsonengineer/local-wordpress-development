@@ -3,20 +3,23 @@ services:
         depends_on:
             - wordpress
         container_name: ${CONTAINER_NAME}-nginx
-        # build:
-        #   context: .
-        #   dockerfile: ./nginx/Dockerfile
         image: nginx:1.19-alpine
         restart: unless-stopped
         env_file: .env
-        environment: # Since nginx 1.19 you can now use environment variables in your configuration with docker-compose.
-            API_HOST: ${DOMAIN_NAME}
+        # See https://hub.docker.com/_/nginx for more information on how to use the official Nginx image.
+        # The official Nginx image uses the default Nginx configuration file at /etc/nginx/nginx.conf.
+        # or it can be overridden by mounting your own configuration file at /etc/nginx/conf.d/default.conf.
+        # Alternatively since nginx 1.19 you can now use environment variables in your configuration with docker-compose.
+        # See section using environment variables in nginx configuration (new in 1.19) on how to do so.
+        environment:
+            NGINX_HOST: ${DOMAIN_NAME}
         ports:
             - '80:80'
             - '443:443'
         volumes:
             - wordpress_volume:/var/www/html
             - ./nginx/nginx-conf:/etc/nginx/conf.d
+            - ./nginx/templates:/etc/nginx/templates
             - certbot-etc_volume:/etc/letsencrypt
         networks:
             - app-network
