@@ -24,11 +24,9 @@ services:
             timeout: 20s
             retries: 10
         ports:
-            - '3306:3306'
+            - '${DATABASE_PORT}:${DATABASE_PORT}'
         volumes:
             - dbdata_volume:/var/lib/mysql
-        # command: '--default-authentication-plugin=mysql_native_password'
-        command: '--default-auth=CACHING_SHA2_PASSWORD'
         networks:
             - app-network
 
@@ -38,8 +36,8 @@ services:
         image: phpmyadmin/phpmyadmin
         env_file: .env
         environment:
-            PMA_HOST: database
-            PMA_PORT: 3306
+            PMA_HOST: database  # use the same name as database service in docker-compose.yml
+            PMA_PORT: ${DATABASE_PORT}
             MYSQL_ROOT_PASSWORD: '${DATABASE_ROOT_PASSWORD}'
         ports:
             - '8081:80'
@@ -55,7 +53,7 @@ services:
         restart: unless-stopped
         env_file: .env
         environment:
-            WORDPRESS_DB_HOST: database:3306 # use the same name as database service in docker-compose.yml
+            WORDPRESS_DB_HOST: database:${DATABASE_PORT} # use the same name as database service in docker-compose.yml
             WORDPRESS_DB_NAME: '${DATABASE_NAME}'
             WORDPRESS_DB_USER: '${DATABASE_USER}'
             WORDPRESS_DB_PASSWORD: '${DATABASE_PASSWORD}'
@@ -107,9 +105,10 @@ services:
             - certbot-etc_volume:/etc/letsencrypt
             - wordpress_volume:/var/www/html
 
-        # command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}
-        # # uncomment for if your domain is only a subdomain and comment out hte above command instead.
-        command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME}
+    #     # Uncomment when a you have domain to register available.
+    #     # command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}
+    #     # # uncomment for if your domain is only a subdomain and comment out hte above command instead.
+    #     command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME}
 
         networks:
             - app-network
