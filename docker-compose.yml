@@ -84,6 +84,7 @@ services:
         ports:
             - '80:80'
             - '443:443'
+            - '9000:9000'
         volumes:
             - wordpress_volume:/var/www/html
             - ./nginx/templates:/etc/nginx/templates
@@ -105,8 +106,11 @@ services:
         volumes:
             - certbot-etc_volume:/etc/letsencrypt
             - wordpress_volume:/var/www/html
+
+        # command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}
+        # # uncomment for if your domain is only a subdomain and comment out hte above command instead.
         command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME}
-        #-d www.${DOMAIN_NAME}
+
         networks:
             - app-network
 
