@@ -54,7 +54,7 @@ services:
         restart: unless-stopped
         env_file: .env
         environment:
-            WORDPRESS_DB_HOST: database:3306 # use the same name as database service
+            WORDPRESS_DB_HOST: database:3306 # use the same name as database service in docker-compose.yml
             WORDPRESS_DB_NAME: '${DATABASE_NAME}'
             WORDPRESS_DB_USER: '${DATABASE_USER}'
             WORDPRESS_DB_PASSWORD: '${DATABASE_PASSWORD}'
@@ -84,10 +84,10 @@ services:
             - '80:80'
             - '443:443'
         volumes:
-            - certbot-etc_volume:/etc/letsencrypt
             - wordpress_volume:/var/www/html
             - ./nginx/templates:/etc/nginx/templates
             - ./nginx/nginx-conf:/etc/nginx/conf.d
+            - certbot-etc_volume:/etc/letsencrypt
         networks:
             - app-network
 
@@ -104,7 +104,8 @@ services:
         volumes:
             - certbot-etc_volume:/etc/letsencrypt
             - wordpress_volume:/var/www/html
-        command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}
+        command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME}
+        #-d www.${DOMAIN_NAME}
 
 
 
