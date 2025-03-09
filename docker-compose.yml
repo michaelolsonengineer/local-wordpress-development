@@ -27,7 +27,8 @@ services:
             - '3306:3306'
         volumes:
             - dbdata_volume:/var/lib/mysql
-        command: '--default-authentication-plugin=mysql_native_password'
+        # command: '--default-authentication-plugin=mysql_native_password'
+        command: '--default-auth=CACHING_SHA2_PASSWORD'
         networks:
             - app-network
 
@@ -106,6 +107,8 @@ services:
             - wordpress_volume:/var/www/html
         command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME}
         #-d www.${DOMAIN_NAME}
+        networks:
+            - app-network
 
 
 
