@@ -36,7 +36,7 @@ services:
         image: phpmyadmin/phpmyadmin
         env_file: .env
         environment:
-            PMA_HOST: database  # use the same name as database service in docker-compose.yml
+            PMA_HOST: database # use the same name as database service in docker-compose.yml
             PMA_PORT: ${DATABASE_PORT}
             MYSQL_ROOT_PASSWORD: '${DATABASE_ROOT_PASSWORD}'
         ports:
@@ -91,7 +91,6 @@ services:
         networks:
             - app-network
 
-
     certbot:
         depends_on:
             - webserver
@@ -105,21 +104,18 @@ services:
             - certbot-etc_volume:/etc/letsencrypt
             - wordpress_volume:/var/www/html
 
-    #     # Uncomment when a you have domain to register available.
-    #     # command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}
-    #     # # uncomment for if your domain is only a subdomain and comment out hte above command instead.
-    #     command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME}
+        #     # Uncomment when a you have domain to register available.
+        #     # command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}
+        # # uncomment the below command for if your domain is does not support www subdomain and comment out to use the above command instead otherwise generally for production.
+        command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME}
 
         networks:
             - app-network
-
-
 
 volumes:
     certbot-etc_volume:
     wordpress_volume:
     dbdata_volume:
-
 
 networks:
     app-network:
