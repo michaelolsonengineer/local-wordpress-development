@@ -279,8 +279,9 @@ first_time_bring_up() {
 
 # shellcheck disable=SC2120
 enable_ssl_after_first_time_bring_up_flag() {
-  local SERVICE_NAME="${1:-webserver}"
-  echoing INFO "Add and Enable SSL in ${SERVICE_NAME} in configuration"
+  local WEB_SERVICE_NAME="${1:-webserver}"
+  local CERT_SERVICE_NAME="${2:-certbot}"
+  echoing INFO "Add and Enable SSL in ${WEB_SERVICE_NAME} in configuration"
 
   if [ ! -e "${SCRIPT_DIR}/.first_time_bring_up_complete" ]; then
     echoing !!!WARNING!!! "Webserver needs to have successfully started first time bring up process to run this process."
@@ -300,25 +301,31 @@ enable_ssl_after_first_time_bring_up_flag() {
   sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--force-renewal/' "${SCRIPT_DIR}/.env"
 
   echoing INFO "Checking if domain directory exists, then checking if for certificates and key for SSL..."
-  docker compose exec "${SERVICE_NAME}" ls -la /etc/letsencrypt/live
-  docker compose exec "${SERVICE_NAME}" ls -la /etc/letsencrypt/live/"${DOMAIN_NAME}"
+  docker compose exec "${WEB_SERVICE_NAME}" ls -la /etc/letsencrypt/live
+  docker compose exec "${WEB_SERVICE_NAME}" ls -la /etc/letsencrypt/live/"${DOMAIN_NAME}"
 
   echoing INFO "Obtaining production certificates..."
-  docker compose up --force-recreate --no-deps certbot
+  docker compose up --force-recreate --no-deps "${CERT_SERVICE_NAME}"
 
-  echoing INFO "Stopping the service(${SERVICE_NAME}) for configuration modifications..."
-  docker compose stop "${SERVICE_NAME}"
+  echoing INFO "Stopping the service(${WEB_SERVICE_NAME}) for configuration modifications..."
+  docker compose stop "${WEB_SERVICE_NAME}"
 
-  echoing INFO "Changing the service(${SERVICE_NAME}) configuration to use SSL certs..."
+  echoing INFO "Changing the service(${WEB_SERVICE_NAME}) configuration to use SSL certs..."
   rm -f "${NGINX_DIR}/templates/default.conf.template"
   cp -f "${NGINX_DIR}/templates/default.nginx.conf.with.ssl.template" "${NGINX_DIR}/templates/default.conf.template"
 
-  echoing INFO "Recreating the service(${SERVICE_NAME}) with reloaded configuration ..."
-  docker compose up -d --force-recreate --no-deps "${SERVICE_NAME}"
+  echoing INFO "Recreating the service(${WEB_SERVICE_NAME}) with reloaded configuration ..."
+  docker compose up -d --force-recreate --no-deps "${WEB_SERVICE_NAME}"
+
+  echoing INFO "${CONTAINER_NAME}-${CERT_SERVICE_NAME}: \"docker compose logs ${CERT_SERVICE_NAME}\""
+  docker compose logs "${CERT_SERVICE_NAME}"
+
+  echoing INFO "${CONTAINER_NAME}-${WEB_SERVICE_NAME}: \"docker compose logs ${WEB_SERVICE_NAME}\""
+  docker compose logs "${WEB_SERVICE_NAME}"
 
   # Create a file to indicate first time bring up is complete and avoid to rerunning this function again
   touch "${SCRIPT_DIR}"/.enable_ssl_after_first_time_bring_up_complete
-  echoing INFO "SSL enabled in ${SERVICE_NAME} complete"
+  echoing INFO "SSL enabled in ${WEB_SERVICE_NAME} complete"
 }
 
 # __nuke
