@@ -27,16 +27,22 @@ __script_help() { # Required
 # Inputs:
     env:
         <ENVIRONMENT_VARIABLE>: <Purpose, optionality, description>
-    args:
-        --first-time-bring-up):
+    command:
+        first-time-bring-up):
             Docker bring with certbot requires proper interaction between the machines since their the SSL certs in this setup, get
             downloaded and then are installed. This makes for a smaller form  factor and less overhead. This flag is used to
             indicate that this is the first time the server is being brought up and the script should run the necessary steps to
             bring up the server properly. This will create a file to indicate the first time bring up is complete and avoid running
             the steps in this function again in the future.
 
-        --nuke):
+        enable-ssl-after-first-time-bring-up):
+            This flag is used to indicate that the server has already been brought up and the script should run the necessary steps
+            to enable SSL on the server. This will create a file to indicate the SSL is enabled complete and avoid running
+            the steps in this function again in the future.
+
+        nuke):
             nuke.
+    args:
 
 # Side Effects
     <How does the script affect the environment?>
@@ -53,16 +59,20 @@ EOM
 __script_parse_opts() { # Optional
   echo "Parsing options for $0 ..."
 
-  # declare -xg ARG2="${2-}"
   declare -xg _do_first_time_bring_up_flag="false"
+  declare -xg _enable_ssl_after_first_time_bring_up_flag="false"
 
   # Parse options
   while (($#)); do
     case "${1}" in
-    --first-time-bring-up)
+    first-time-bring-up)
       _do_first_time_bring_up_flag="true"
       ;;
-    --nuke)
+    enable-ssl-after-first-time-bring-up)
+      _do_first_time_bring_up_flag="true"
+      _enable_ssl_after_first_time_bring_up_flag="true"
+      ;;
+    nuke)
       __nuke
       exit 1
       ;;
@@ -254,6 +264,30 @@ first_time_bring_up() {
     docker compose logs "${compose_service}"
   done
 
+  # Check if wordpress files were created
+  [ -e "${SCRIPT_DIR}/src" ] ||
+    error "Wordpress files not found. Did server appeared to fail to complete successfully"
+
+  # Create a file to indicate first time bring up is complete and avoid
+  # running this function again
+  touch "${SCRIPT_DIR}"/.first_time_bring_up_complete
+  echoing INFO "First time bring up complete"
+}
+
+enable_ssl_after_first_time_bring_up_flag() {
+  echoing INFO "Add and Enable SSL in Webserver in configuration"
+
+  # Check if certbot license file was created
+  if [ -e "${SCRIPT_DIR}/.enable_ssl_after_first_time_bring_up_complete" ]; then
+    echoing !!!WARNING!!! "Detected SSL webserver configuration process completed, don't need to run this process again"
+    return
+  fi
+
+  local NGINX_DIR="${SCRIPT_DIR}/nginx"
+
+  # pull in the variables from the .env file
+  . "${SCRIPT_DIR}/.env"
+
   # # Set the flag to force renewal of the certbot certs
   # # FIXME: NOTE: Highly recommended to do a dry run first then switch to the --force-renewal flag
   # echoing INFO "Changing the Certbot staging flag here if we are ready for SSL certs docker-compose.yml..."
@@ -281,14 +315,10 @@ first_time_bring_up() {
   # [ -e "${SCRIPT_DIR}/certbot/conf/live" ] ||
   #   error "Certbot files not found. Did server appeared to fail to complete successfully"
 
-  # Check if wordpress files were created
-  [ -e "${SCRIPT_DIR}/src" ] ||
-    error "Wordpress files not found. Did server appeared to fail to complete successfully"
-
   # Create a file to indicate first time bring up is complete and avoid
   # running this function again
-  # touch "${SCRIPT_DIR}"/.first_time_bring_up_complete
-  echoing INFO "First time bring up complete"
+  touch "${SCRIPT_DIR}"/.enable_ssl_after_first_time_bring_up_complete
+  echoing INFO "SSL enabled in webserver complete"
 }
 
 # __nuke
