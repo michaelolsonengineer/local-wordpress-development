@@ -17,6 +17,9 @@ Another Docker Configuration for Local WordPress development
 -   Install [mkcert](https://github.com/FiloSottile/mkcert)
     -   If Ubuntu/Debian,
         -   `sudo apt install golang` is needed to build to install mkcert
+-   Install [yq](https://github.com/mikefarah/yq)
+    -   If Ubuntu/Debian,
+        -   sudo apt-get update && sudo apt-get install -y yq
 
 #### Initialization
 

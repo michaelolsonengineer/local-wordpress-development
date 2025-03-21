@@ -68,7 +68,7 @@ services:
     webserver:
         depends_on:
             - wordpress
-        container_name: ${CONTAINER_NAME}-nginx
+        container_name: ${CONTAINER_NAME}-webserver
         image: nginx:1.19-alpine
         restart: unless-stopped
         env_file: .env
@@ -95,19 +95,20 @@ services:
         depends_on:
             - webserver
         image: certbot/certbot
-        container_name: certbot
+        container_name: ${CONTAINER_NAME}-certbot
         env_file: .env
         environment:
             DOMAIN_NAME: ${DOMAIN_NAME}
             WORDPRESS_ADMIN_EMAIL: ${WORDPRESS_ADMIN_EMAIL}
+            CERTBOT_STAGING_FLAG: ${CERTBOT_STAGING_FLAG}
         volumes:
             - certbot-etc_volume:/etc/letsencrypt
             - wordpress_volume:/var/www/html
 
         #     # Uncomment when a you have domain to register available.
-        #     # command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}
+        #     # command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email ${CERTBOT_STAGING_FLAG} -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}
         # # uncomment the below command for if your domain is does not support www subdomain and comment out to use the above command instead otherwise generally for production.
-        command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email --force-renewal -d ${DOMAIN_NAME}
+        command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email ${CERTBOT_STAGING_FLAG} -d ${DOMAIN_NAME}
 
         networks:
             - app-network
