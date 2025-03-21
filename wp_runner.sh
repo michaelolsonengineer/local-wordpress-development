@@ -59,8 +59,10 @@ EOM
 __script_parse_opts() { # Optional
   echo "Parsing options for $0 ..."
 
+  declare -xg NGINX_DIR="${SCRIPT_DIR}/nginx"
+
   declare -xg _do_first_time_bring_up_flag="false"
-  declare -xg _enable_ssl_after_first_time_bring_up_flag="false"
+  declare -xg _do_enable_ssl_after_first_time_bring_up_flag="false"
 
   # Parse options
   while (($#)); do
@@ -70,7 +72,7 @@ __script_parse_opts() { # Optional
       ;;
     enable-ssl-after-first-time-bring-up)
       _do_first_time_bring_up_flag="true"
-      _enable_ssl_after_first_time_bring_up_flag="true"
+      _do_enable_ssl_after_first_time_bring_up_flag="true"
       ;;
     nuke)
       __nuke
@@ -90,7 +92,8 @@ __script_parse_opts() { # Optional
   done
 
   echoing INFO "---------------------------------------------------------------------"
-  echoing INFO "first_time_bring_up_flag:      ${_do_first_time_bring_up_flag}"
+  echoing INFO "first_time_bring_up_flag:                       ${_do_first_time_bring_up_flag}"
+  echoing INFO "enable_ssl_after_first_time_bring_up_flag:      ${_do_enable_ssl_after_first_time_bring_up_flag}"
   echoing INFO "---------------------------------------------------------------------"
 }
 
@@ -113,12 +116,12 @@ __script_exec() { # Required
   if [ "${_do_first_time_bring_up_flag}" = "true" ]; then
     echoing INFO "Running first_time_bring_up ..."
     first_time_bring_up
-
   fi
 
-  #docker compose up --build
-  #docker compose up -d
-  #--force-recreate --no-deps webserver
+  if [ "${_do_enable_ssl_after_first_time_bring_up_flag}" = "true" ]; then
+    echoing INFO "Running enable_ssl_after_first_time_bring_up_flag ..."
+    enable_ssl_after_first_time_bring_up_flag
+  fi
 
   #exit 1
 }
@@ -233,16 +236,16 @@ __script_cleanup() {
 first_time_bring_up() {
   echoing INFO "First time bring up"
 
-  # Check if certbot license file was created
   if [ -e "${SCRIPT_DIR}/.first_time_bring_up_complete" ]; then
     echoing !!!WARNING!!! "Detected server first time bring up process completed, don't need to run this process again"
     return
   fi
 
-  local NGINX_DIR="${SCRIPT_DIR}/nginx"
-
   # pull in the variables from the .env file
   . "${SCRIPT_DIR}/.env"
+
+  echoing INFO "Changing the Certbot staging flag here if we are ready i.e. getting TEST certs for SSL certs docker-compose.yml..."
+  sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--staging/' "${SCRIPT_DIR}/.env"
 
   # set the default nginx template to the no ssl template for first time bring up for certbot pull just certs
   rm -f "${NGINX_DIR}/templates/default.conf.template"
@@ -274,51 +277,48 @@ first_time_bring_up() {
   echoing INFO "First time bring up complete"
 }
 
+# shellcheck disable=SC2120
 enable_ssl_after_first_time_bring_up_flag() {
-  echoing INFO "Add and Enable SSL in Webserver in configuration"
+  local SERVICE_NAME="${1:-webserver}"
+  echoing INFO "Add and Enable SSL in ${SERVICE_NAME} in configuration"
 
-  # Check if certbot license file was created
-  if [ -e "${SCRIPT_DIR}/.enable_ssl_after_first_time_bring_up_complete" ]; then
-    echoing !!!WARNING!!! "Detected SSL webserver configuration process completed, don't need to run this process again"
+  if [ ! -e "${SCRIPT_DIR}/.first_time_bring_up_complete" ]; then
+    echoing !!!WARNING!!! "Webserver needs to have successfully started first time bring up process to run this process."
     return
   fi
 
-  local NGINX_DIR="${SCRIPT_DIR}/nginx"
+  if [ -e "${SCRIPT_DIR}/.enable_ssl_after_first_time_bring_up_complete" ]; then
+    echoing !!!WARNING!!! "Detected SSL webserver configuration process completed, don't need to run this process again."
+    return
+  fi
 
   # pull in the variables from the .env file
   . "${SCRIPT_DIR}/.env"
 
-  # # Set the flag to force renewal of the certbot certs
-  # # FIXME: NOTE: Highly recommended to do a dry run first then switch to the --force-renewal flag
-  # echoing INFO "Changing the Certbot staging flag here if we are ready for SSL certs docker-compose.yml..."
-  # sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--staging/' "${SCRIPT_DIR}/.env"
-  # # sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--force-renewal/' "${SCRIPT_DIR}/.env"
+  # Set the flag to force renewal of the certbot certs to get PROD certs
+  echoing INFO "Changing the Certbot staging flag here to get PROD SSL certs docker-compose.yml..."
+  sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--force-renewal/' "${SCRIPT_DIR}/.env"
 
-  # # set the default nginx template to use ssl template for first time bring up for certbot pull certs
-  # echoing INFO "Changing the server configuration to use SSL certs..."
-  # rm -f "${NGINX_DIR}/templates/default.conf.template"
-  # cp -f "${NGINX_DIR}/templates/default.nginx.conf.with.ssl.template" "${NGINX_DIR}/templates/default.conf.template"
+  echoing INFO "Checking if domain directory exists, then checking if for certificates and key for SSL..."
+  docker compose exec "${SERVICE_NAME}" ls -la /etc/letsencrypt/live
+  docker compose exec "${SERVICE_NAME}" ls -la /etc/letsencrypt/live/"${DOMAIN_NAME}"
 
-  # local compose_volume
-  # for compose_volume in $(yq '.volumes | keys[]' docker-compose.yml); do
-  #   local created_volume=${SCRIPT_DIR##*/}_${compose_volume//\"/}
-  #   echoing INFO "inspecting volume: ${created_volume}"
-  #   docker volume inspect "${created_volume}" 1>/dev/null 2>&1 ||
-  #     echoing !!!WARNING!!! "Docker volume \"${created_volume}\" not found. Suggest possibly running \"docker volume rm ${created_volume}\" to clean up if first time startup fails if necessary"
-  # done
+  echoing INFO "Obtaining production certificates..."
+  docker compose up --force-recreate --no-deps certbot
 
-  # # docker-compose exec webserver ls -la /etc/letsencrypt/live
+  echoing INFO "Stopping the service(${SERVICE_NAME}) for configuration modifications..."
+  docker compose stop "${SERVICE_NAME}"
 
-  # # docker-compose up --force-recreate --no-deps certbot
+  echoing INFO "Changing the service(${SERVICE_NAME}) configuration to use SSL certs..."
+  rm -f "${NGINX_DIR}/templates/default.conf.template"
+  cp -f "${NGINX_DIR}/templates/default.nginx.conf.with.ssl.template" "${NGINX_DIR}/templates/default.conf.template"
 
-  # # Check if certbot license file was created
-  # [ -e "${SCRIPT_DIR}/certbot/conf/live" ] ||
-  #   error "Certbot files not found. Did server appeared to fail to complete successfully"
+  echoing INFO "Recreating the service(${SERVICE_NAME}) with reloaded configuration ..."
+  docker compose up -d --force-recreate --no-deps "${SERVICE_NAME}"
 
-  # Create a file to indicate first time bring up is complete and avoid
-  # running this function again
+  # Create a file to indicate first time bring up is complete and avoid to rerunning this function again
   touch "${SCRIPT_DIR}"/.enable_ssl_after_first_time_bring_up_complete
-  echoing INFO "SSL enabled in webserver complete"
+  echoing INFO "SSL enabled in ${SERVICE_NAME} complete"
 }
 
 # __nuke
