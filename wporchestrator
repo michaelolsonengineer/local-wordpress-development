@@ -1,10 +1,21 @@
 #!/bin/bash
+
+# Exit on error
+set -e
+
+# Throw error if undefined variable used
+set -u
+
 ##########################################################
 # Adapted original bash template script from Kyle Smith
 ##########################################################
 
 # shellcheck disable=SC2155
 declare -xg SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/tools/common/constants.sh"
+source "${SCRIPT_DIR}/tools/common/general_utils.sh"
+
+#------------------------------------------------------------------------------
 
 # __script_help
 #       Called by the help script, this function should print out a help
@@ -28,19 +39,25 @@ __script_help() { # Required
     env:
         <ENVIRONMENT_VARIABLE>: <Purpose, optionality, description>
     command:
-        first-time-bring-up):
+        install_dependencies:
+            This flag is used to indicate that the script should install the necessary dependencies for the server to run
+            properly. This will create a file to indicate the dependencies are installed and avoid running the steps in this
+            function again in the future.
+
+        first-time-bring-up:
             Docker bring with certbot requires proper interaction between the machines since their the SSL certs in this setup, get
             downloaded and then are installed. This makes for a smaller form  factor and less overhead. This flag is used to
             indicate that this is the first time the server is being brought up and the script should run the necessary steps to
             bring up the server properly. This will create a file to indicate the first time bring up is complete and avoid running
             the steps in this function again in the future.
+            NOTE: This flag will also run the install_dependencies flag.
 
-        enable-ssl-after-first-time-bring-up):
+        enable-ssl-after-first-time-bring-up:
             This flag is used to indicate that the server has already been brought up and the script should run the necessary steps
             to enable SSL on the server. This will create a file to indicate the SSL is enabled complete and avoid running
             the steps in this function again in the future.
 
-        nuke):
+        nuke:
             nuke.
     args:
 
@@ -61,16 +78,23 @@ __script_parse_opts() { # Optional
 
   declare -xg NGINX_DIR="${SCRIPT_DIR}/nginx"
 
+  # Set default values
+  declare -xg _do_install_dependencies_flag="false"
   declare -xg _do_first_time_bring_up_flag="false"
   declare -xg _do_enable_ssl_after_first_time_bring_up_flag="false"
 
   # Parse options
   while (($#)); do
     case "${1}" in
+    install_dependencies)
+      _do_install_dependencies_flag="true"
+      ;;
     first-time-bring-up)
+      _do_install_dependencies_flag="true"
       _do_first_time_bring_up_flag="true"
       ;;
     enable-ssl-after-first-time-bring-up)
+      _do_install_dependencies_flag="true"
       _do_first_time_bring_up_flag="true"
       _do_enable_ssl_after_first_time_bring_up_flag="true"
       ;;
@@ -92,6 +116,7 @@ __script_parse_opts() { # Optional
   done
 
   echoing INFO "---------------------------------------------------------------------"
+  echoing INFO "install_dependencies_flag:                      ${_do_install_dependencies_flag}"
   echoing INFO "first_time_bring_up_flag:                       ${_do_first_time_bring_up_flag}"
   echoing INFO "enable_ssl_after_first_time_bring_up_flag:      ${_do_enable_ssl_after_first_time_bring_up_flag}"
   echoing INFO "---------------------------------------------------------------------"
@@ -113,6 +138,11 @@ __script_init() { # Optional
 #       architecture enforces good script writing practices and reduces script
 #       boilerplate for error handling.
 __script_exec() { # Required
+  if [ "${_do_install_dependencies_flag}" = "true" ]; then
+    echoing INFO "Running first_time_bring_up ..."
+    install_dependencies
+  fi
+
   if [ "${_do_first_time_bring_up_flag}" = "true" ]; then
     echoing INFO "Running first_time_bring_up ..."
     first_time_bring_up
@@ -152,71 +182,6 @@ __script_failed() { # Optional
 
 }
 
-# function to ask for confirmation
-# shellcheck disable=SC2120
-confirm() {
-  # call with a prompt string or use a default
-  read -r -p "${1:- Are you sure you want to do this? [y/N]} " response
-  case "$response" in
-  [yY][eE][sS] | [yY])
-    true
-    ;;
-  *)
-    false
-    ;;
-  esac
-}
-
-# ===== error =====
-# Description: Helper function to cleanly exit a shell when a catastrophic
-#   error has occurred
-# How to Use: Call when an unrecoverable catastrophe has occurred in the
-#   Current shell:
-#       error "${message}" "callback expression"
-#   Can also be called with no message, or no callback:
-#       error "" "callback expression"
-#       error "${message}"
-# Inputs:
-#   _message (optional): Error message to log, optional w/ callback as ""
-#   _callback (optional): Callback expression to be evaluated with eval after
-#       printing the message and before exiting with an error
-# Side Effects:
-#   Optionally prints the error message and then optionally evaluates the
-#   callback. Finally exits with an error code of 1
-error() {
-  local _message="${1-}"
-  local _callback="${2-}"
-
-  [ -n "${_message}" ] &&
-    echoing ERROR "${_message}"
-
-  [ -n "${_callback}" ] &&
-    eval "${_callback}"
-
-  exit 1
-}
-
-echoing() {
-  echo -e "${1-}: ${2-}"
-}
-
-# countdown
-#       countdown is a function that will print a countdown timer to the screen
-#       in the format HH:MM:SS.  It takes a single argument in the format
-#       Originally sourced from: https://community.unix.com/t/display-runnning-countdown-in-a-bash-script/229648/2
-countdown() (
-  IFS=:
-  set -- $*
-  secs=$((${1#0} * 3600 + ${2#0} * 60 + ${3#0}))
-  while [ $secs -gt 0 ]; do
-    sleep 1 &
-    printf "\r%02d:%02d:%02d" $((secs / 3600)) $(((secs / 60) % 60)) $((secs % 60))
-    secs=$(($secs - 1))
-    wait
-  done
-  echo
-)
-
 # __script_cleanup
 #       __script_cleanup is run as the very last step of
 #       execute script, after __script_succeed/__script_failed.  This can be
@@ -233,6 +198,24 @@ __script_cleanup() {
   # echoing INFO "Cleaning up potential dirty state ..."
 }
 
+# install_dependencies
+#       This function will install the necessary dependencies for the to be installed server to run properly.
+#       The function is designed to only install the individual dependendencies if it detects if the particular
+#       dependencies are not installed/missing.
+install_dependencies() {
+  echoing INFO "Checking/Installing dependencies ..."
+  source "${SCRIPT_DIR}/tools/common/dependencies.sh"
+  install_basic_packages
+  # setup_docker # NOTE: This has not been tested yet
+  # install_webapp_packages # NOTE: This has not been tested yet
+  # install_miscellaneous_packages # NOTE: This has not been tested yet
+}
+
+# first_time_bring_up
+#       This function will bring up the server for the first time. It will create the necessary files and directories
+#       for the server to run properly. It will also create the necessary docker containers and volumes for the server
+#       to run properly. This function will also create a file to indicate the first time bring up is complete and avoid
+#       running this function again in the future.
 first_time_bring_up() {
   echoing INFO "First time bring up"
 
@@ -246,6 +229,9 @@ first_time_bring_up() {
 
   echoing INFO "Changing the Certbot staging flag here if we are ready i.e. getting TEST certs for SSL certs docker-compose.yml..."
   sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--staging/' "${SCRIPT_DIR}/.env"
+
+  # Ensure the necessary dependencies are installed
+  install_dependencies
 
   # set the default nginx template to the no ssl template for first time bring up for certbot pull just certs
   rm -f "${NGINX_DIR}/templates/default.conf.template"
@@ -277,6 +263,11 @@ first_time_bring_up() {
   echoing INFO "First time bring up complete"
 }
 
+# enable_ssl_after_first_time_bring_up_flag
+#       This function will enable SSL on the server after the server has been brought up for the first time. It will
+#       create the necessary files and directories for the server to run properly. It will also create the necessary
+#       docker containers and volumes for the server to run properly. This function will also create a file to indicate
+#       the SSL is enabled complete and avoid running this function again in the future.
 # shellcheck disable=SC2120
 enable_ssl_after_first_time_bring_up_flag() {
   local WEB_SERVICE_NAME="${1:-webserver}"
