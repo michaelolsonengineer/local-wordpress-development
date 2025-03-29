@@ -6,7 +6,7 @@ set -e
 # Throw error if undefined variable used
 set -u
 
-source "${TOOLS_COMMON_DIR-.}/constants.sh"
+source "${TOOLS_COMMON_DIR:-.}/constants.sh"
 #------------------------------------------------------------------------------
 
 # Ensure basic packages are installed
@@ -108,24 +108,35 @@ install_docker_dependencies() {
   fi
 }
 
-#------------------------------------------------------------------------------
 # Sets up environment to run Docker
 # See https://docs.docker.com/engine/install/ubuntu/ for more information
 # Usage: setup_docker
 setup_docker() {
   local docker_apt_repo
+  local docker_apt_search_pattern="https://download.docker.com/linux/ubuntu"
   install_docker_dependencies
 
-  # Add Docker's official GPG key:
-  sudo install -m 0755 -d /etc/apt/keyrings
-  sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  # Add Docker's official GPG key
+  if [ ! -e "/etc/apt/keyrings/docker.asc" ]; then
+    sudo install -m 0755 -d /etc/apt/keyrings
+    sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    sudo chmod a+r /etc/apt/keyrings/docker.asc
+  fi
 
   # Add the repository to Apt sources:
-  echo \
-    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-    $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" |
-    sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+  docker_apt_repo="deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable"
+
+  # Check if the repository is already added and add it if not
+  if ! grep -r -q -F --include "*.list" "${docker_apt_search_pattern}" /etc/apt/sources.list.d/ 2>/dev/null; then
+    echoing INFO "Adding Docker repository to Apt sources"
+    sudo add-apt-repository "${docker_apt_repo}"
+    sudo apt update
+    # docker suggests using the following command to add the repository, but using linux official command above
+    # echo "${docker_apt_repo}" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+  else
+    echoing INFO "Docker repository already exists in apt-repository sources"
+  fi
 
   install_docker
 
@@ -133,8 +144,8 @@ setup_docker() {
   sudo usermod -aG docker "${USER}"
 
   if ! verify_docker_permission; then
-    echo -e "Could not complete dependency installation script due to docker permission issues.
-\t Please read the INFO message above for details on how to resolve this."
+    echo "Could not complete dependency installation script due to docker permission issues."
+    echo "Please read the INFO message above for details on how to resolve this."
   fi
 
   # Verify docker properly installed and running
@@ -143,7 +154,6 @@ setup_docker() {
   fi
 }
 
-#------------------------------------------------------------------------------
 # Ensure necessary Docker packages are installed
 #   docker-ce: Docker - community edition
 #   docker-ce-cli: Command line interface for Docker CE
@@ -158,6 +168,7 @@ install_docker() {
   local install_docker_ce_cli=""
   local install_containerd_io=""
   local install_docker_buildx_plugin=""
+  local install_docker_compose_plugin=""
 
   if ! is_installed "docker-ce"; then
     install_docker_ce="docker-ce"
@@ -198,26 +209,39 @@ install_docker() {
   fi
 }
 
-#------------------------------------------------------------------------------
-
+# Ensure necessary webapp packages are installed
+#   mysql-client: MySQL client
+#   certbot: EFF's tool to obtain certs from Let's Encrypt
+#   wp-cli: Command line interface for WordPress
+# Usage: install_webapp_packages
 install_webapp_packages() {
   echoing INFO "Checking webapp packages..."
   local install_webapp_group=false
+  local install_mysql_client=""
+  local install_certbot=""
 
-  if ! is_installed "mysql-client"; then
-    install_mysql_client="mysql-client"
+  if ! is_installed "mysqladmin"; then
+    local install_mysql_client="mysql-client"
     install_webapp_group=true
+  fi
+
+  if ! is_installed "certbot"; then
+    install_certbot="certbot"
+    install_webapp_group=true
+  fi
+
+  if ! is_installed "wp"; then
+    echo "Sets up wordpress cli"
+    sudo wget https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -O /usr/bin/wp
+    sudo chmod +x /usr/bin/wp
   fi
 
   if [ "${install_webapp_group}" = true ]; then
     echoing INFO "Installing necessary Webapp packages"
     # shellcheck disable=SC2086
     sudo apt update && sudo apt install -y --no-install-recommends \
-      ${install_mysql_client}
-
-    echo "Sets up wordpress cli"
-    sudo wget https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -O /usr/bin/wp
-    sudo chmod +x /usr/bin/wp
+      ${install_mysql_client} \
+      ${install_certbot}
   fi
 }
 

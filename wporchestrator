@@ -200,14 +200,14 @@ __script_cleanup() {
 
 # install_dependencies
 #       This function will install the necessary dependencies for the to be installed server to run properly.
-#       The function is designed to only install the individual dependendencies if it detects if the particular
+#       The function is designed to only install the individual dependencies if it detects if the particular
 #       dependencies are not installed/missing.
 install_dependencies() {
   echoing INFO "Checking/Installing dependencies ..."
   source "${SCRIPT_DIR}/tools/common/dependencies.sh"
   install_basic_packages
-  # setup_docker # NOTE: This has not been tested yet
-  # install_webapp_packages # NOTE: This has not been tested yet
+  install_webapp_packages
+  setup_docker
   # install_miscellaneous_packages # NOTE: This has not been tested yet
 }
 

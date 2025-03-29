@@ -6,7 +6,7 @@ set -e
 # Throw error if undefined variable used
 set -u
 
-source "${TOOLS_COMMON_DIR-.}/constants.sh"
+source "${TOOLS_COMMON_DIR:-.}/constants.sh"
 #------------------------------------------------------------------------------
 
 echoing() {
@@ -85,7 +85,12 @@ countdown() (
 #     0 if it is installed, 1 otherwise
 is_installed() {
   local package=$1
-  if [[ -z $(command -v "${package}") ]]; then
+
+  if apt -qq list "${package}" 2>/dev/null | grep -q installed; then
+    return 0
+  fi
+
+  if [ -z "$(command -v "${package}")" ]; then
     return 1
   else
     return 0
