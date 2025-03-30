@@ -9,11 +9,163 @@ set -u
 source "${TOOLS_COMMON_DIR:-.}/constants.sh"
 #------------------------------------------------------------------------------
 
-echoing() {
-  echo -e "${1-}: ${2-}"
+# ===== log =====
+# Description: Prints a message to stderr with a specified log level and color
+# Arguments:
+#   $1: The log level (e.g., INFO, WARN, ERROR, OK)
+#   $2: The message to print
+# Usage:
+#   log INFO "This is an info message"
+#   log WARN "This is a warning message"
+#   log ERROR "This is an error message"
+#   log OK "This is an ok message"
+# Output:
+#   Prints the message to stderr with the specified log level and color
+# Notes:
+#   This function uses ANSI escape codes to format the output. The message is
+#   printed in the color corresponding to the log level. The output is sent to
+#   stderr. The function does not check for the existence of the message before
+#   printing, so it may print an empty line if no message is provided.
+# Example:
+#   log INFO "This is an info message"
+#   # Output: [INFO] This is an info message
+log() {
+  local level="${1}"
+  local message="${2}"
+
+  case "${level}" in
+  INFO)
+    (echo >&2 -e "[${BLUE}${BOLD}INFO${STYLE_RESET}]${TAB}${BLUE}${message}${STYLE_RESET}")
+    ;;
+  WARN | WARNING | WARNINGS)
+    (echo >&2 -e "[${YELLOW}${BOLD}WARNING${STYLE_RESET}]${TAB}${YELLOW}${message}${STYLE_RESET}")
+    ;;
+  ERROR | FAIL | ERR | FATAL | CRITICAL)
+    (echo >&2 -e "[${RED}${BOLD}ERROR${STYLE_RESET}]${TAB}${RED}${message}${STYLE_RESET}")
+    ;;
+  OK)
+    (echo >&2 -e "[${GREEN}${BOLD}OK${STYLE_RESET}]${TAB}${GREEN}${message}${STYLE_RESET}")
+    ;;
+  *)
+    (echo >&2 -e "[${PURPLE}${BOLD}${level}${STYLE_RESET}]${TAB}${WHITE}${message}${STYLE_RESET}")
+    ;;
+  esac
+}
+
+# ===== info =====
+# Description: Prints info message to stderr, info header in blue followed by message
+# Arguments:
+#   $1: message to print
+# Usage:
+#   info "This is an info message"
+# Output:
+#   Prints the message to stderr with a blue info header
+# Notes:
+#   This function uses ANSI escape codes to format the output. The message is
+#   printed in blue with a bold "INFO" header. The output is sent to stderr.
+#   The function does not check for the existence of the message before printing,
+#   so it may print an empty line if no message is provided.
+# Example:
+#   info "This is an info message"
+#   # Output: [INFO] This is an info message
+#   # (in blue with a bold header)
+#   info "This is another info message"
+#   # Output: [INFO] This is another info message
+info() {
+  local message=${1-}
+  (echo >&2 -e "[${BLUE}${BOLD}INFO${STYLE_RESET}]${TAB}${BLUE}${message}${STYLE_RESET}")
+}
+
+# ====== warning =====
+# Description: Prints warning message to stderr, warning header in yellow followed by message
+# Arguments:
+#   $1: message to print
+# Usage:
+#   warning "This is a warning message"
+# Output:
+#   Prints the message to stderr with a yellow warning header
+# Notes:
+#   This function uses ANSI escape codes to format the output. The message is
+#   printed in yellow with a bold "WARNING" header. The output is sent to stderr.
+#   The function does not check for the existence of the message before printing,
+#   so it may print an empty line if no message is provided.
+# Example:
+#   warning "This is a warning message"
+#   # Output: [WARNING] This is a warning message
+warning() {
+  local message=${1-}
+  (echo >&2 -e "[${YELLOW}${BOLD}WARNING${STYLE_RESET}]${TAB}${YELLOW}${message}${STYLE_RESET}")
 }
 
 # ===== error =====
+# Description: Prints error message to stderr, error header in red followed by message
+# Arguments:
+#   $1: message to print
+# Usage:
+#   error "This is an error message"
+# Output:
+#   Prints the message to stderr with a red error header
+# Notes:
+#   This function uses ANSI escape codes to format the output. The message is
+#   printed in red with a bold "ERROR" header. The output is sent to stderr.
+#   The function does not check for the existence of the message before printing,
+#   so it may print an empty line if no message is provided.
+# Example:
+#   error "This is an error message"
+#   # Output: [ERROR] This is an error message
+error() {
+  local message=${1-}
+  (echo >&2 -e "[${RED}${BOLD}ERROR${STYLE_RESET}]${TAB}${RED}${message}${STYLE_RESET}")
+}
+
+# ===== ok =====
+# Description: Prints ok message to stderr, ok header in green followed by message
+# Arguments:
+#   $1: message to print
+# Usage:
+#   ok "This is an ok message"
+# Output:
+#   Prints the message to stderr with a green ok header
+# Notes:
+#   This function uses ANSI escape codes to format the output. The message is
+#   printed in green with a bold "OK" header. The output is sent to stderr.
+#   The function does not check for the existence of the message before printing,
+#   so it may print an empty line if no message is provided.
+# Example:
+#   ok "This is an ok message"
+#   # Output: [OK] This is an ok message
+ok() {
+  local message=${1-}
+  (echo >&2 -e "[${GREEN}${BOLD}OK${STYLE_RESET}]${TAB}${GREEN}${message}${STYLE_RESET}")
+}
+
+# ===== print_color_msg =====
+# Description: Prints a message to stderr with a specified color
+# Arguments:
+#   $1: The color code (e.g., RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN)
+#   $2: The message to print
+# Usage:
+#   print_color_msg RED "This is a red message"
+#   print_color_msg GREEN "This is a green message"
+# Output:
+#   Prints the message to stderr with the specified color
+# Notes:
+#   This function uses ANSI escape codes to format the output. The message is
+#   printed in the specified color. The output is sent to stderr. The function
+#   does not check for the existence of the message before printing, so it may
+#   print an empty line if no message is provided.
+# Example:
+#   print_color_msg RED "This is a red message"
+#   # Output: This is a red message (in red color)
+#   print_color_msg GREEN "This is a green message"
+#   # Output: This is a green message (in green color)
+print_color_msg() {
+  local color=$1
+  local message=$2
+  (echo >&2 -e "${color}${message}${STYLE_RESET}")
+}
+
+# ===== error2 =====
 # Description: Helper function to cleanly exit a shell when a catastrophic
 #   error has occurred
 # How to Use: Call when an unrecoverable catastrophe has occurred in the
@@ -29,12 +181,12 @@ echoing() {
 # Side Effects:
 #   Optionally prints the error message and then optionally evaluates the
 #   callback. Finally exits with an error code of 1
-error() {
+error2() {
   local _message="${1-}"
   local _callback="${2-}"
 
   [ -n "${_message}" ] &&
-    echoing ERROR "${_message}"
+    log ERROR "${_message}"
 
   [ -n "${_callback}" ] &&
     eval "${_callback}"
@@ -57,17 +209,20 @@ confirm() {
   esac
 }
 
-# countdown
+# ===== countdown =====
+# Description:
 #       countdown is a function that will print a countdown timer to the screen
 #       in the format HH:MM:SS.  It takes a single argument in the format
 #       Originally sourced from: https://community.unix.com/t/display-runnning-countdown-in-a-bash-script/229648/2
 countdown() (
   IFS=:
+  # shellcheck disable=SC2048,SC2086
   set -- $*
   secs=$((${1#0} * 3600 + ${2#0} * 60 + ${3#0}))
   while [ $secs -gt 0 ]; do
     sleep 1 &
     printf "\r%02d:%02d:%02d" $((secs / 3600)) $(((secs / 60) % 60)) $((secs % 60))
+    # shellcheck disable=SC2004
     secs=$(($secs - 1))
     wait
   done
@@ -94,6 +249,46 @@ is_installed() {
     return 1
   else
     return 0
+  fi
+}
+
+# ===== f: find =====
+# Description: Find a file in the current directory
+# Usage: f <filename>
+# Example: f myfile.txt
+# Output: Prints the path to the file if found, otherwise nothing
+# Side Effects: None
+# Notes: This function uses the find command to search for the file in the
+#   current directory and its subdirectories. It uses the basename of the
+#   provided filename to match the file name. The function does not check
+#   for the existence of the file before searching, so it may return an error
+#   if the file does not exist.
+# Arguments:
+#   $1: The name of the file to search for. This can be a partial or full
+#       filename. The function will search for the file in the current
+#       directory and its subdirectories.
+# f: find shorthand
+f() { find . -name "$(basename "$*")"; }
+
+# ===== g: git shorthand =====
+# Description: A shorthand function for git since 3 letters is too much
+# can be any valid git command with its arguments. If no command is provided,
+# the function will run "git status --short" by default.
+# Example: g status
+# Output: Executes the specified git command or runs git status if no
+#   command is provided
+# Arguments:
+#   $@: The git can be any valid git command with its arguments.
+#       If no command is provided, the function will run "git status --short"
+#       by default.
+g() {
+  # if there are arguments, send them to git as-is
+  # otherwise, run git status
+  if [ $# -gt 0 ]; then
+    # shellcheck disable=SC2068
+    git $@
+  else
+    git status --short
   fi
 }
 
@@ -133,34 +328,45 @@ set_if_empty() {
   local default_value=$2
 
   if [[ -z "${!var_name-}" ]]; then
-    echoing WARN "$var_name is not specified! Using default value."
+    log WARN "$var_name is not specified! Using default value."
     declare -gx "$var_name=$default_value"
-    echoing WARN "Using $var_name=${!var_name}"
+    log WARN "Using $var_name=${!var_name}"
   fi
 }
 
-#------------------------------------------------------------------------------
-# Verify docker permissions
-# Usage: verify_docker_permission <quiet>
-# quiet: when set to "-q", silences messages for scripts that just need status and no feedback
+# ===== verify_docker_permission =====
+# Description:
+#     Verifies if the user has permission to run Docker commands.
+# Arguments:
+#     $1 - Optional argument to suppress output (e.g., "-q" for quiet mode).
+# Usage:
+#     verify_docker_permission
+#     verify_docker_permission -q   # for quiet mode
+# Output:
+#     Prints a message indicating whether the user has permission to run Docker commands.
+#     If the user does not have permission, it provides instructions to add the user to the Docker group.
+#     Returns 0 if the user has permission, 1 if there is an error.
+# Side Effects:
+#     If the user does not have permission, it may suggest running a command to add the user to the Docker group.
+#     It may also suggest rebooting the system if the user is added to the Docker group.
 # Return: 0 if success, 1 if error
 verify_docker_permission() {
   local quiet=${1:-v}
   if [[ ${quiet} != "-q" ]]; then
-    echoing INFO "Verifying docker permission ..."
+    log INFO "Verifying docker permission ..."
   fi
 
   # Check for error conditions
   if ! docker ps &>/dev/null; then
     if ! groups | grep -q docker; then
-      echoing WARN "User has not been added to the docker group."
-      echoing INFO "If the command 'groups | grep docker' does not print anything and your docker installation does not include
+      log WARN "User has not been added to the docker group."
+      log INFO "If the command 'groups | grep docker' does not print anything and your docker installation does not include
       your user for the proper permissions, please run the following command:"
-      echoing INFO "\"sudo usermod -aG docker ${USER}\""
-      echoing INFO "A reboot will then be required of the system."
+      log INFO "\"sudo usermod -aG docker ${USER}\""
+      log INFO "A reboot will then be required of the system."
     else
-      echoing WARN "The docker test command 'docker ps' has failed. \
-This is likely due to an improper docker installation or a docker permission issue."
+      log WARN "The docker test command 'docker ps' has failed."
+      log WARN "This is likely due to an improper docker installation or a docker permission issue."
     fi
     return 1
   fi

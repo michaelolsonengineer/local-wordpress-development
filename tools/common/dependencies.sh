@@ -17,7 +17,7 @@ source "${TOOLS_COMMON_DIR:-.}/constants.sh"
 #   yq: YAML processor
 # Usage: install_basic_packages
 install_basic_packages() {
-  echoing INFO "Checking basic packages..."
+  log INFO "Checking basic packages..."
   local install_basic_group=false
   local install_curl=""
   local install_wget=""
@@ -57,7 +57,7 @@ install_basic_packages() {
   fi
 
   if [ "${install_basic_group}" = true ]; then
-    echoing INFO "Installing necessary basic packages"
+    log INFO "Installing necessary basic packages"
     # shellcheck disable=SC2086
     sudo apt update && sudo apt install -y --no-install-recommends \
       ${install_curl} \
@@ -77,7 +77,7 @@ install_basic_packages() {
 #   software-properties-common: adds scripts to manage the software
 # Usage: install_docker_dependencies
 install_docker_dependencies() {
-  echoing INFO "Checking Docker dependency packages..."
+  log INFO "Checking Docker dependency packages..."
   local install_dependencies_group=false
   local install_apt_transport_https=""
   local install_ca_certificates=""
@@ -99,7 +99,7 @@ install_docker_dependencies() {
   fi
 
   if [ "$install_dependencies_group" = true ]; then
-    echoing INFO "Installing necessary Docker dependency packages"
+    log INFO "Installing necessary Docker dependency packages"
     # shellcheck disable=SC2086
     sudo apt update && sudo apt install -y --no-install-recommends \
       ${install_apt_transport_https} \
@@ -129,13 +129,13 @@ setup_docker() {
 
   # Check if the repository is already added and add it if not
   if ! grep -r -q -F --include "*.list" "${docker_apt_search_pattern}" /etc/apt/sources.list.d/ 2>/dev/null; then
-    echoing INFO "Adding Docker repository to Apt sources"
+    log INFO "Adding Docker repository to Apt sources"
     sudo add-apt-repository "${docker_apt_repo}"
     sudo apt update
     # docker suggests using the following command to add the repository, but using linux official command above
     # echo "${docker_apt_repo}" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
   else
-    echoing INFO "Docker repository already exists in apt-repository sources"
+    log INFO "Docker repository already exists in apt-repository sources"
   fi
 
   install_docker
@@ -162,7 +162,7 @@ setup_docker() {
 #   docker-compose-plugin: Docker CLI plugin for extended compose capabilities with ComposeKit
 # Usage: install_docker
 install_docker() {
-  echoing INFO "Checking Docker packages..."
+  log INFO "Checking Docker packages..."
   local install_docker_group=false
   local install_docker_ce=""
   local install_docker_ce_cli=""
@@ -196,7 +196,7 @@ install_docker() {
   fi
 
   if [ "${install_docker_group}" = true ]; then
-    echoing INFO "Installing necessary Docker packages"
+    log INFO "Installing necessary Docker packages"
     # shellcheck disable=SC2086
     sudo apt update && sudo apt install -y --no-install-recommends \
       ${install_docker_ce} \
@@ -204,7 +204,7 @@ install_docker() {
       ${install_containerd_io} \
       ${install_docker_buildx_plugin} \
       ${install_docker_compose_plugin}
-    echoing INFO "Errors encountered while processing docker-ce is expected." \
+    log INFO "Errors encountered while processing docker-ce is expected." \
       "This is remedied at the end of the script."
   fi
 }
@@ -215,7 +215,7 @@ install_docker() {
 #   wp-cli: Command line interface for WordPress
 # Usage: install_webapp_packages
 install_webapp_packages() {
-  echoing INFO "Checking webapp packages..."
+  log INFO "Checking webapp packages..."
   local install_webapp_group=false
   local install_mysql_client=""
   local install_certbot=""
@@ -237,7 +237,7 @@ install_webapp_packages() {
   fi
 
   if [ "${install_webapp_group}" = true ]; then
-    echoing INFO "Installing necessary Webapp packages"
+    log INFO "Installing necessary Webapp packages"
     # shellcheck disable=SC2086
     sudo apt update && sudo apt install -y --no-install-recommends \
       ${install_mysql_client} \
@@ -249,7 +249,7 @@ install_webapp_packages() {
 #   golang: Go programming language
 # Usage: install_miscellaneous_packages
 install_miscellaneous_packages() {
-  echoing INFO "Checking miscellaneous packages..."
+  log INFO "Checking miscellaneous packages..."
   local install_miscellaneous_group=false
   local install_golang=""
 
@@ -280,7 +280,7 @@ install_miscellaneous_packages() {
   # html2text
 
   if [ "${install_miscellaneous_group}" = true ]; then
-    echoing INFO "Installing miscellaneous packages"
+    log INFO "Installing miscellaneous packages"
     # shellcheck disable=SC2086
     sudo apt update && sudo apt install -y --no-install-recommends \
       ${install_golang}

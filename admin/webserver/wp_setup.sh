@@ -82,7 +82,7 @@ service apache2 restart
 
 echo -en "Now we will create your new admin user account for WordPress."
 
-function wordpress_admin_account() {
+wordpress_admin_account() {
 
   while [ -z "${email}" ]; do
     echo -en "\n"
@@ -126,7 +126,7 @@ echo -en "\n\n\n"
 read -rp "Would you like to use LetsEncrypt (certbot) to configure SSL(https) for your new site? (y/n): " yn
 case $yn in
 [Yy]*)
-  certbot --apache
+  certbot --nginx
   echo "WordPress has been enabled at https://$dom  Please open this URL in a browser to complete the setup of your site."
   ;;
 [Nn]*)

@@ -28,7 +28,7 @@ __script_help() { # Required
 ===== $0 ====
 
 # Description:
-    <Briefly Describe Scripts Purpose>
+    The main runner docker wordpress compose server
 
 # How to Use:
     <Sample Use Case>
@@ -36,9 +36,7 @@ __script_help() { # Required
         $0 <...>
 
 # Inputs:
-    env:
-        <ENVIRONMENT_VARIABLE>: <Purpose, optionality, description>
-    command:
+    commands:
         install_dependencies:
             This flag is used to indicate that the script should install the necessary dependencies for the server to run
             properly. This will create a file to indicate the dependencies are installed and avoid running the steps in this
@@ -58,7 +56,7 @@ __script_help() { # Required
             the steps in this function again in the future.
 
         nuke:
-            nuke.
+            nuke. Don't use this unless you are sure
     args:
 
 # Side Effects
@@ -99,6 +97,7 @@ __script_parse_opts() { # Optional
       _do_enable_ssl_after_first_time_bring_up_flag="true"
       ;;
     nuke)
+      source "${SCRIPT_DIR}/admin/webserver/nuke.sh"
       __nuke
       exit 1
       ;;
@@ -115,11 +114,11 @@ __script_parse_opts() { # Optional
     shift
   done
 
-  echoing INFO "---------------------------------------------------------------------"
-  echoing INFO "install_dependencies_flag:                      ${_do_install_dependencies_flag}"
-  echoing INFO "first_time_bring_up_flag:                       ${_do_first_time_bring_up_flag}"
-  echoing INFO "enable_ssl_after_first_time_bring_up_flag:      ${_do_enable_ssl_after_first_time_bring_up_flag}"
-  echoing INFO "---------------------------------------------------------------------"
+  log INFO "---------------------------------------------------------------------"
+  log INFO "install_dependencies_flag:                      ${_do_install_dependencies_flag}"
+  log INFO "first_time_bring_up_flag:                       ${_do_first_time_bring_up_flag}"
+  log INFO "enable_ssl_after_first_time_bring_up_flag:      ${_do_enable_ssl_after_first_time_bring_up_flag}"
+  log INFO "---------------------------------------------------------------------"
 }
 
 # __script_init (optional)
@@ -129,7 +128,7 @@ __script_parse_opts() { # Optional
 #       This stage is useful for ensuring build tools are present, and ensuring
 #       the necessary environment variables are set.
 __script_init() { # Optional
-  echoing INFO "Initializing $0 ..."
+  log INFO "Initializing $0 ..."
 }
 
 # __script_exec
@@ -139,21 +138,22 @@ __script_init() { # Optional
 #       boilerplate for error handling.
 __script_exec() { # Required
   if [ "${_do_install_dependencies_flag}" = "true" ]; then
-    echoing INFO "Running first_time_bring_up ..."
+    log INFO "Running first_time_bring_up ..."
     install_dependencies
   fi
 
   if [ "${_do_first_time_bring_up_flag}" = "true" ]; then
-    echoing INFO "Running first_time_bring_up ..."
+    log INFO "Running first_time_bring_up ..."
     first_time_bring_up
   fi
 
   if [ "${_do_enable_ssl_after_first_time_bring_up_flag}" = "true" ]; then
-    echoing INFO "Running enable_ssl_after_first_time_bring_up_flag ..."
+    log INFO "Running enable_ssl_after_first_time_bring_up_flag ..."
     enable_ssl_after_first_time_bring_up_flag
   fi
 
-  #exit 1
+  # NOTE: This is where you would add any other functions to run
+
 }
 
 # __script_succeed (optional)
@@ -161,7 +161,7 @@ __script_exec() { # Required
 #       used to provide feedback to the user about the success, or trigger
 #       post-script-success logic
 __script_succeed() { # Optional
-  echoing INFO "$0 succeeded!!!"
+  log INFO "$0 succeeded!!!"
 }
 
 # __script_failed (optional)
@@ -169,7 +169,7 @@ __script_succeed() { # Optional
 #       to provide feedback to the user about the failure and trigger
 #       post-script-failed logic.
 __script_failed() { # Optional
-  echoing INFO "$0 failed (aka the nonstandard-exit method)!!!"
+  log INFO "$0 failed (aka the nonstandard-exit method)!!!"
 
   # docker container list
   # docker volume list
@@ -195,7 +195,7 @@ __script_cleanup() {
   fi
 
   # Optional
-  # echoing INFO "Cleaning up potential dirty state ..."
+  # log INFO "Cleaning up potential dirty state ..."
 }
 
 # install_dependencies
@@ -203,7 +203,7 @@ __script_cleanup() {
 #       The function is designed to only install the individual dependencies if it detects if the particular
 #       dependencies are not installed/missing.
 install_dependencies() {
-  echoing INFO "Checking/Installing dependencies ..."
+  log INFO "Checking/Installing dependencies ..."
   source "${SCRIPT_DIR}/tools/common/dependencies.sh"
   install_basic_packages
   install_webapp_packages
@@ -217,17 +217,17 @@ install_dependencies() {
 #       to run properly. This function will also create a file to indicate the first time bring up is complete and avoid
 #       running this function again in the future.
 first_time_bring_up() {
-  echoing INFO "First time bring up"
+  log INFO "First time bring up"
 
   if [ -e "${SCRIPT_DIR}/.first_time_bring_up_complete" ]; then
-    echoing !!!WARNING!!! "Detected server first time bring up process completed, don't need to run this process again"
+    log !!!WARNING!!! "Detected server first time bring up process completed, don't need to run this process again"
     return
   fi
 
   # pull in the variables from the .env file
   . "${SCRIPT_DIR}/.env"
 
-  echoing INFO "Changing the Certbot staging flag here if we are ready i.e. getting TEST certs for SSL certs docker-compose.yml..."
+  log INFO "Changing the Certbot staging flag here if we are ready i.e. getting TEST certs for SSL certs docker-compose.yml..."
   sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--staging/' "${SCRIPT_DIR}/.env"
 
   # Ensure the necessary dependencies are installed
@@ -239,17 +239,17 @@ first_time_bring_up() {
 
   docker compose up -d
 
-  echoing INFO "Waiting for server to start up. It will take about ~2-3 minutes..."
+  log INFO "Waiting for server to start up. It will take about ~2-3 minutes..."
   countdown "00:02:30"
 
   docker ps
 
-  echoing INFO "Getting logs from all containers created in docker-compose.yml..."
+  log INFO "Getting logs from all containers created in docker-compose.yml..."
   local compose_service
   for compose_service in $(yq '.services | keys[]' docker-compose.yml); do
     compose_service=${compose_service//\"/}
     local named_service=${CONTAINER_NAME}-${compose_service}
-    echoing INFO "${named_service}: \"docker compose logs ${compose_service}\""
+    log INFO "${named_service}: \"docker compose logs ${compose_service}\""
     docker compose logs "${compose_service}"
   done
 
@@ -260,7 +260,7 @@ first_time_bring_up() {
   # Create a file to indicate first time bring up is complete and avoid
   # running this function again
   touch "${SCRIPT_DIR}"/.first_time_bring_up_complete
-  echoing INFO "First time bring up complete"
+  log INFO "First time bring up complete"
 }
 
 # enable_ssl_after_first_time_bring_up_flag
@@ -272,15 +272,15 @@ first_time_bring_up() {
 enable_ssl_after_first_time_bring_up_flag() {
   local WEB_SERVICE_NAME="${1:-webserver}"
   local CERT_SERVICE_NAME="${2:-certbot}"
-  echoing INFO "Add and Enable SSL in ${WEB_SERVICE_NAME} in configuration"
+  log INFO "Add and Enable SSL in ${WEB_SERVICE_NAME} in configuration"
 
   if [ ! -e "${SCRIPT_DIR}/.first_time_bring_up_complete" ]; then
-    echoing !!!WARNING!!! "Webserver needs to have successfully started first time bring up process to run this process."
+    log !!!WARNING!!! "Webserver needs to have successfully started first time bring up process to run this process."
     return
   fi
 
   if [ -e "${SCRIPT_DIR}/.enable_ssl_after_first_time_bring_up_complete" ]; then
-    echoing !!!WARNING!!! "Detected SSL webserver configuration process completed, don't need to run this process again."
+    log !!!WARNING!!! "Detected SSL webserver configuration process completed, don't need to run this process again."
     return
   fi
 
@@ -288,94 +288,35 @@ enable_ssl_after_first_time_bring_up_flag() {
   . "${SCRIPT_DIR}/.env"
 
   # Set the flag to force renewal of the certbot certs to get PROD certs
-  echoing INFO "Changing the Certbot staging flag here to get PROD SSL certs docker-compose.yml..."
+  log INFO "Changing the Certbot staging flag here to get PROD SSL certs docker-compose.yml..."
   sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--force-renewal/' "${SCRIPT_DIR}/.env"
 
-  echoing INFO "Checking if domain directory exists, then checking if for certificates and key for SSL..."
+  log INFO "Checking if domain directory exists, then checking if for certificates and key for SSL..."
   docker compose exec "${WEB_SERVICE_NAME}" ls -la /etc/letsencrypt/live
   docker compose exec "${WEB_SERVICE_NAME}" ls -la /etc/letsencrypt/live/"${DOMAIN_NAME}"
 
-  echoing INFO "Obtaining production certificates..."
+  log INFO "Obtaining production certificates..."
   docker compose up --force-recreate --no-deps "${CERT_SERVICE_NAME}"
 
-  echoing INFO "Stopping the service(${WEB_SERVICE_NAME}) for configuration modifications..."
+  log INFO "Stopping the service(${WEB_SERVICE_NAME}) for configuration modifications..."
   docker compose stop "${WEB_SERVICE_NAME}"
 
-  echoing INFO "Changing the service(${WEB_SERVICE_NAME}) configuration to use SSL certs..."
+  log INFO "Changing the service(${WEB_SERVICE_NAME}) configuration to use SSL certs..."
   rm -f "${NGINX_DIR}/templates/default.conf.template"
   cp -f "${NGINX_DIR}/templates/default.nginx.conf.with.ssl.template" "${NGINX_DIR}/templates/default.conf.template"
 
-  echoing INFO "Recreating the service(${WEB_SERVICE_NAME}) with reloaded configuration ..."
+  log INFO "Recreating the service(${WEB_SERVICE_NAME}) with reloaded configuration ..."
   docker compose up -d --force-recreate --no-deps "${WEB_SERVICE_NAME}"
 
-  echoing INFO "${CONTAINER_NAME}-${CERT_SERVICE_NAME}: \"docker compose logs ${CERT_SERVICE_NAME}\""
+  log INFO "${CONTAINER_NAME}-${CERT_SERVICE_NAME}: \"docker compose logs ${CERT_SERVICE_NAME}\""
   docker compose logs "${CERT_SERVICE_NAME}"
 
-  echoing INFO "${CONTAINER_NAME}-${WEB_SERVICE_NAME}: \"docker compose logs ${WEB_SERVICE_NAME}\""
+  log INFO "${CONTAINER_NAME}-${WEB_SERVICE_NAME}: \"docker compose logs ${WEB_SERVICE_NAME}\""
   docker compose logs "${WEB_SERVICE_NAME}"
 
   # Create a file to indicate first time bring up is complete and avoid to rerunning this function again
   touch "${SCRIPT_DIR}"/.enable_ssl_after_first_time_bring_up_complete
-  echoing INFO "SSL enabled in ${WEB_SERVICE_NAME} complete"
-}
-
-# __nuke
-#       This function will bring down the site and then clean up all docker containers and volumes.
-#       It invoked with --nuke flag is passed to this script and will prompt the user for confirmation before proceeding
-#       This function will remove all stopped containers and volumes defined in the docker-compose.yml file and it
-#       will not remove any running containers. Nor will it remove any volumes not defined in the docker-compose.yml file
-__nuke() {
-  echo "┌────────────────────────────────────────────────────────────────────────────────┐"
-  echo -e "│       \e[1;5m***************************************************************\e[0m          │"
-  echo -e "│        DANGER   |   ACHTUNG   |   PELIGRO   |   ОПАСНОСТЬ   |   危险           │"
-  echo -e "│       \e[1;5m***************************************************************\e[0m          │"
-  echo "│                                                                                │"
-  echo "│ You're about to nuke ALL containers & volumes for your site containing the.    │"
-  echo "│ database and files for website ensure you backed up elsewhere as this          |"
-  echo "| PERMANENT.                                                                     │"
-  echo "│                                                                                │"
-  echo "│ This can't be undone, data will be lost and you will be starting from fresh:   │"
-  echo "│  ═> '$0 --first-time-bring-up' to bring up the site again          │"
-  echo "└────────────────────────────────────────────────────────────────────────────────┘"
-  if confirm; then # triggers shellcheck SC2120 for `confirm`
-    echo -e "\n   \"I say we take off and nuke the entire site from orbit. It's the only way to be sure...\"\n"
-
-    echoing WARN "Stopping site..."
-    docker compose down
-
-    echoing WARN "Deleting ALL stopped containers..."
-    docker container prune -f
-    # if [[ $(docker ps -q) ]]; then
-    #   # shellcheck disable=SC2046
-    #   docker rm $(docker ps -a -q --filter "status=exited") --force
-    # fi
-
-    echoing WARN "Delete \"${SCRIPT_DIR}/src\"?"
-    if confirm; then
-      sudo rm -rf "${SCRIPT_DIR}/src"
-    fi
-
-    echoing WARN "Deleting ALL stopped volumes defined in docker-compose.yml..."
-    local compose_volume
-    for compose_volume in $(yq '.volumes | keys[]' docker-compose.yml); do
-      local created_volume=${SCRIPT_DIR##*/}_${compose_volume//\"/}
-      echoing WARN "removing volume: ${created_volume}"
-      if docker volume inspect "${created_volume}" 1>/dev/null 2>&1; then
-        docker volume rm "${created_volume}" 1>/dev/null 2>&1 ||
-          echoing !!!WARNING!!! "Docker volume \"${created_volume}\" removed."
-      fi
-    done
-
-    echoing INFO "Docker Containers Check: ... $(docker ps -a -q)"
-    [ -z "$(docker ps -a -q)" ] ||
-      error "Docker containers not removed"
-
-    echoing INFO "Docker Volume Check: ... $(docker volume ls -q)"
-    [ -z "$(docker volume ls -q)" ] ||
-      error "Docker volumes not removed"
-
-    echoing INFO "Nuke detonated successfully"
-  fi
+  log INFO "SSL enabled in ${WEB_SERVICE_NAME} complete"
 }
 
 # ===== Main Script Workflow =====
