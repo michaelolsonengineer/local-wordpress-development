@@ -117,12 +117,14 @@ __script_init() { # Optional
         log WARN "No environment configured default file ${ENVIRONMENT_FILE} detected."
     else
         # grab all the data from the password file
-        NEW_USER=$(sed -n "s/^DATABASE_USER=\"\(.*\)\"$/\1/p" "${ENVIRONMENT_FILE}")
-        NEW_PASSWORD=$(sed -n "s/^DATABASE_PASSWORD=\"\(.*\)\"$/\1/p" "${ENVIRONMENT_FILE}")
+        # NOTE: per docker documentation at this time. The --env-file format was designed to be a
+        # plain NAME=value, no parsing, and no handling on quotes.
+        NEW_USER=$(sed -n "s/^DATABASE_USER=\(.*\)$/\1/p" "${ENVIRONMENT_FILE}")
+        NEW_PASSWORD=$(sed -n "s/^DATABASE_PASSWORD=\(.*\)$/\1/p" "${ENVIRONMENT_FILE}")
 
-        echo -en "Would you like to create the linux user: ${NEW_USER}"
-        echo -en "With the password: ${NEW_PASSWORD}"
-
+        echo -en "Would you like to create the linux user: \t ${NEW_USER}"
+        echo -en "\n"
+        echo -en "and with the password: \t\t\t\t ${NEW_PASSWORD}"
         echo -en "\n"
         read -rp "Is the information correct? [Y/n] " confirmation
         confirmation=${confirmation,,}
@@ -195,7 +197,7 @@ __script_exec() { # Required
 #       used to provide feedback to the user about the success, or trigger
 #       post-script-success logic
 __script_succeed() { # Optional
-    log INFO "$0 succeeded!"
+    ok "$0 succeeded!"
 }
 
 # __script_failed (optional)
@@ -203,7 +205,8 @@ __script_succeed() { # Optional
 #       to provide feedback to the user about the failure and trigger
 #       post-script-failed logic.
 __script_failed() { # Optional
-    log INFO "Could not execute $0 successfully"
+    error "Could not execute $0 successfully"
+    exit 1
 }
 
 # __script_cleanup

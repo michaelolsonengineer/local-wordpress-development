@@ -153,7 +153,6 @@ __script_exec() { # Required
   fi
 
   # NOTE: This is where you would add any other functions to run
-
 }
 
 # __script_succeed (optional)
@@ -179,7 +178,6 @@ __script_failed() { # Optional
   #   "${SCRIPT_DIR%/*}_dbdata_volume" \
   #   "${SCRIPT_DIR%/*}_certbot-etc_volume"
   # sudo rm -rf src/
-
 }
 
 # __script_cleanup
