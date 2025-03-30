@@ -13,6 +13,7 @@ declare -xg WORKSPACE="$(cd "${TOOLS_COMMON_DIR}/../../" && pwd)"
 #------------------------------------------------------------------------------
 
 declare -xg DOCKER="/usr/bin/docker"
+declare -xg WEBSERVER_ROOT="/var/www/html"
 
 #=======================================
 #       Color and style definitions

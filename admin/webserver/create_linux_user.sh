@@ -122,17 +122,22 @@ __script_init() { # Optional
         NEW_USER=$(sed -n "s/^DATABASE_USER=\(.*\)$/\1/p" "${ENVIRONMENT_FILE}")
         NEW_PASSWORD=$(sed -n "s/^DATABASE_PASSWORD=\(.*\)$/\1/p" "${ENVIRONMENT_FILE}")
 
-        echo -en "Would you like to create the linux user: \t ${NEW_USER}"
-        echo -en "\n"
-        echo -en "and with the password: \t\t\t\t ${NEW_PASSWORD}"
-        echo -en "\n"
-        read -rp "Is the information correct? [Y/n] " confirmation
-        confirmation=${confirmation,,}
-        if [[ "${confirmation}" =~ ^(yes|y)$ ]] || [ -z "${confirmation}" ]; then
-            return
-        else
-            unset NEW_USER NEW_PASSWORD
+        # Check if the group/user already exists from docker env file, prompt user to create it if not added already
+        if ! (getent group "${NEW_USER}" &>/dev/null && id "${NEW_USER}" &>/dev/null); then
+            echo -en "Would you like to create the linux user: \t ${NEW_USER}"
+            echo -en "\n"
+            echo -en "and with the password: \t\t\t\t ${NEW_PASSWORD}"
+            echo -en "\n"
+            read -rp "Is the information correct? [Y/n] " confirmation
+
+            # If user confirms, no need to prompt further for new user
+            confirmation=${confirmation,,}
+            if [[ "${confirmation}" =~ ^(yes|y)$ ]] || [ -z "${confirmation}" ]; then
+                return
+            fi
         fi
+
+        unset NEW_USER NEW_PASSWORD
 
         echo -en "\n"
         read -rp "Username: " NEW_USER
