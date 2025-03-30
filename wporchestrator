@@ -97,7 +97,7 @@ __script_parse_opts() { # Optional
       ;;
     wp_setup)
       info "Running wp_setup ..."
-      "${SCRIPT_DIR}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
+      env -i bash --posix -c "${SCRIPT_DIR}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
       exit 0
       ;;
     nuke)
