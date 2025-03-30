@@ -70,6 +70,9 @@ __script_parse_opts() { # Optional
   declare -xg wordpress_admin_username
   declare -xg wordpress_admin_pass
   declare -xg wordpress_blog_title
+  declare -xg temp_dir=$(mktemp -d)
+
+  echo "Temporary directory created: ${temp_dir}"
 
   # Parse options
   while (($#)); do
@@ -101,13 +104,10 @@ __script_parse_opts() { # Optional
 __script_init() { # Optional
   log INFO "Initializing $0 ..."
   local confirmation
-
-  # Enable WordPress on first login
-  if [[ -d /var/www/wordpress ]]; then
-    mv "${WEBSERVER_ROOT}" "${WEBSERVER_ROOT}.old"
-    mv /var/www/wordpress "${WEBSERVER_ROOT}"
-  fi
-  chown -Rf www-data:www-data "${WEBSERVER_ROOT}"
+  local dkc_exec="docker compose exec"
+  local built_cmd
+  local exec_cmd
+  local sideload_wordpress_setup_script="help_wp_setup.sh"
 
   # if applicable, configure wordpress to use mysql dbaas
   if [ -e "${environment_file}" ]; then
@@ -115,18 +115,37 @@ __script_init() { # Optional
     . "${environment_file}"
 
     # update the wp-config.php with stored credentials
-    sed -i "s/'DB_USER', '.*'/'DB_USER', '${DATABASE_USER}'/g" "${WEBSERVER_ROOT}/wp-config.php"
-    sed -i "s/'DB_NAME', '.*'/'DB_NAME', '${DATABASE_NAME}'/g" "${WEBSERVER_ROOT}/wp-config.php"
-    sed -i "s/'DB_PASSWORD', '.*'/'DB_PASSWORD', '${DATABASE_PASSWORD}'/g" "${WEBSERVER_ROOT}/wp-config.php"
+    echo "#!/bin/sh" >"${temp_dir}/${sideload_wordpress_setup_script}"
+    {
+      __build_sed_replace DB_USER "${DATABASE_USER}"
+      __build_sed_replace DB_NAME "${DATABASE_NAME}"
+      __build_sed_replace DB_PASSWORD "${DATABASE_PASSWORD}"
+    } >>"${temp_dir}/${sideload_wordpress_setup_script}"
+
+    # FIXME: TODO: Need to Test
+    # # add required SSL flag
+    # if [ -e "${WORKSPACE}/.enable_ssl_after_first_time_bring_up_complete" ]; then
+    #   # add required SSL flag
+    #   echo "echo '/** Connect to MySQL cluster over SSL **/' >>${WEBSERVER_ROOT}/wp-config.php" >> "${temp_dir}/${sideload_wordpress_setup_script}"
+    #   echo "echo 'define( 'MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL );' >>${WEBSERVER_ROOT}/wp-config.php" >> "${temp_dir}/${sideload_wordpress_setup_script}"
+    # fi
+
+    info "Going to execute on wordpress docker container the following ... $(cat "${temp_dir}/${sideload_wordpress_setup_script}")"
+
+    # Turn on extra verbosity for easier debugging
+    set -x
+    docker compose cp \
+      "${temp_dir}/${sideload_wordpress_setup_script}" \
+      "wordpress:${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
+
+    ${dkc_exec} wordpress chmod 755 "${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
+    ${dkc_exec} wordpress "${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
+    ${dkc_exec} wordpress rm "${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
+    set +x
+    # Disable it extra verbosity since it was needed for docker compose commands
 
     # FIXME: this require docker compose commands ... I think ... to get the host on the virtual network ... so this is tricky
     # sed -i "s/'DB_HOST', '.*'/'DB_HOST', '$host:${DATABASE_PORT}'/g" ${WEBSERVER_ROOT}/wp-config.php
-
-    # add required SSL flag
-    cat >>"${WEBSERVER_ROOT}/wp-config.php" <<EOM
-/** Connect to MySQL cluster over SSL **/
-define( 'MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL );
-EOM
 
     # wait for db to become available
     echo -e "\nWaiting for your database to become available (this may take a few minutes)"
@@ -235,7 +254,6 @@ __script_exec() { # Required
   wp plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
   wp plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
   chown -Rf www-data.www-data /var/www/
-  cp /etc/skel/.bashrc /root
 
   info "Bringing server back up ..."
   docker compose up -d
@@ -285,6 +303,23 @@ __script_cleanup() {
   unset wordpress_admin_username
   unset wordpress_admin_pass
   unset wordpress_blog_title
+
+  # rm -rf "${temp_dir}"
+
+  # unset temp_dir
+}
+
+# Example Output:
+#   sed -i "s/define(\s*'DB_NAME'\s*,\s*\(.*\)\s*);/define( 'DB_NAME', 'user' );/g" /root/workspace/wp-config.php
+__build_sed_replace() {
+  local variable_name=$1
+  local new_value=$2
+  local output_file=${3:-$WEBSERVER_ROOT/wp-config.php}
+  local _match_pattern
+  local _replace_sting
+  _match_pattern="define(\s*'${variable_name}'\s*,\s*\(.*\)\s*);"
+  _replace_sting="define( '${variable_name}' , '${new_value}' );"
+  echo -n "sed -i \"s~${_match_pattern}~${_replace_sting}~g\" '${output_file}'"
 }
 
 trap __script_cleanup EXIT
