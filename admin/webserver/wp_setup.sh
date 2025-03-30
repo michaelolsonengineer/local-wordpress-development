@@ -319,7 +319,7 @@ __build_sed_replace() {
   local _replace_sting
   _match_pattern="define(\s*'${variable_name}'\s*,\s*\(.*\)\s*);"
   _replace_sting="define( '${variable_name}' , '${new_value}' );"
-  echo -n "sed -i \"s~${_match_pattern}~${_replace_sting}~g\" '${output_file}'"
+  echo "sed -i \"s~${_match_pattern}~${_replace_sting}~g\" '${output_file}'"
 }
 
 trap __script_cleanup EXIT
