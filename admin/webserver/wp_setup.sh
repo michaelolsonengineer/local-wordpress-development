@@ -50,7 +50,6 @@ __script_help() { # Required
     --env-file:
         the configuration file for reading default staging environment configuration information
 
-
 EOM
 
   exit 1
@@ -65,6 +64,7 @@ __script_parse_opts() { # Optional
   echo "Parsing options for $0 ..."
 
   # Set default values
+  declare -xg WEB_SERVICE_NAME="webserver"
   declare -xg environment_file="${WORKSPACE}/.env"
   declare -xg wordpress_admin_email
   declare -xg wordpress_admin_username
@@ -111,10 +111,33 @@ __script_init() { # Optional
   local database_docker_ip
   local sideload_wordpress_setup_script="help_wp_setup.sh"
 
+  echo "This script will adjust the WordPress installation into"
+  echo "Your docker containers existing docker container's ${WEBSERVER_ROOT}"
+  echo "for wordpress by reading information needed from the other containers"
+  echo "in the virtual network setup by docker compose needed for the wp-cli"
+  echo "to function properly ."
+  echo "--------------------------------------------------"
+  echo "This setup requires a domain name to be in the .env file."
+  echo "If you do not have one yet, you may cancel this setup, press Ctrl+C."
+  echo "This script will run again on your next login"
+  echo "--------------------------------------------------"
+  # echo "Enter the domain name for your new WordPress site."
+  # echo "(ex. example.org or test.example.org) do not include www or http/s"
+  # echo "--------------------------------------------------"
+
   # if applicable, configure wordpress to use mysql dbaas
   if [ -e "${environment_file}" ]; then
     # grab all the data from the password file
     . "${environment_file}"
+
+    # wait for db to become available
+    info "Waiting for your database to become available (this may take a few minutes)"
+    info "If this take too much time you may need to cancel over +5 min then, press Ctrl+C."
+    while ! mysqladmin ping -h "${DOMAIN_NAME}" -P "${DATABASE_PORT}" --silent; do
+      printf .
+      sleep 2
+    done
+    echo -e "\nDatabase available!\n"
 
     # FIXME: this require docker compose commands ... I think ... to get the host on the virtual network ... so this is tricky
     database_docker_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CONTAINER_NAME}-database")"
@@ -148,34 +171,9 @@ __script_init() { # Optional
     ${dkc_exec} wordpress "${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
     ${dkc_exec} wordpress rm "${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
     set +x
-    # Disable it extra verbosity since it was needed for docker compose commands
-
-    # wait for db to become available
-    echo -e "\nWaiting for your database to become available (this may take a few minutes)"
-    echo "If this take too much time you may need to cancel over +5 min then, press Ctrl+C."
-    while ! mysqladmin ping -h "${DOMAIN_NAME}" -P "${DATABASE_PORT}" --silent; do
-      printf .
-      sleep 2
-    done
-    echo -e "\nDatabase available!\n"
-
-    # disable any local MySQL instances to perform next tasks
-    systemctl stop mysql &>/dev/null || true
-    systemctl disable mysql &>/dev/null || true
-    docker compose down
   fi
 
-  echo "This script will copy the WordPress installation into"
-  echo "Your web root and move the existing one to ${WEBSERVER_ROOT}.old"
-  echo "--------------------------------------------------"
-  echo "This setup requires a domain name.  If you do not have one yet, you may"
-  echo "cancel this setup, press Ctrl+C.  This script will run again on your next login"
-  echo "--------------------------------------------------"
-  echo "Enter the domain name for your new WordPress site."
-  echo "(ex. example.org or test.example.org) do not include www or http/s"
-  echo "--------------------------------------------------"
-
-  echo -en "Now we will create your new admin user account for WordPress."
+  info "Now we will create your new admin user account for WordPress."
 
   # Get user prompt user information till properly given non-empty input
   prompt_user_for_wordpress_admin_account() {
@@ -218,6 +216,8 @@ __script_init() { # Optional
       prompt_user_for_wordpress_admin_account
     fi
   done
+
+  info "Ready to add admin user ..."
 }
 
 # __script_exec
@@ -243,7 +243,7 @@ __script_exec() { # Required
   # *) echo "Please answer y or n." ;;
   # esac
 
-  info "Completing the configuration of WordPress."
+  info "Completing the configuration of WordPress ..."
   set -x
   docker compose run --rm wordpress-cli core install \
     --allow-root \
@@ -253,6 +253,10 @@ __script_exec() { # Required
     --admin_email="${wordpress_admin_email}" \
     --admin_password="${wordpress_admin_pass}" \
     --admin_user="${wordpress_admin_username}"
+
+  # NOTE: make a script to create users. Accidentally deleted user during testing. Leaving here for now
+  # docker compose run --rm wordpress-cli user create \
+  #   "${wordpress_admin_username}" "${wordpress_admin_email}" --role=administrator --user_pass="${wordpress_admin_pass}"
 
   docker compose run --rm wordpress-cli \
     plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
@@ -289,17 +293,6 @@ __script_cleanup() {
   else
     __script_failed
   fi
-
-  info "Bringing server back up ..."
-  docker compose up -d
-
-  info "Waiting for your database to become available (this may take a few minutes) ..."
-  info "If this take too much time you may need to cancel over +5 min then, press Ctrl+C."
-  while ! mysqladmin ping -h "${DOMAIN_NAME}" -P "${DATABASE_PORT}" --silent; do
-    printf .
-    sleep 2
-  done
-  echo -e "\nDatabase available!\n"
 
   # Optional
   # info "Cleaning up potential dirty state ..."

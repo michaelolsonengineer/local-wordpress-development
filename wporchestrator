@@ -231,6 +231,10 @@ first_time_bring_up() {
   # pull in the variables from the .env file
   . "${SCRIPT_DIR}/.env"
 
+  # # disable any local MySQL instances to perform next tasks
+  # sudo systemctl stop mysql &>/dev/null || true
+  # sudo systemctl disable mysql &>/dev/null || true
+
   info "Changing the Certbot staging flag here if we are ready i.e. getting TEST certs for SSL certs docker-compose.yml..."
   sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--staging/' "${SCRIPT_DIR}/.env"
 
