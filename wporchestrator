@@ -1,0 +1,347 @@
+#!/bin/bash
+#
+#  The main runner docker wordpress compose server
+#
+#     Acknowledgments:
+#       Adapted original bash template script from Kyle Smith
+#
+
+# Exit on error
+set -e
+
+# Throw error if undefined variable used
+set -u
+
+# shellcheck disable=SC2155
+declare -xg SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/tools/common/constants.sh"
+source "${SCRIPT_DIR}/tools/common/general_utils.sh"
+
+#------------------------------------------------------------------------------
+
+# __script_help
+#       Called by the help script, this function should print out a help
+#       message instructing the user on the usage of the script and return
+#       cleanly.  This function can include programmatic generation of the help
+#       text, but it cannot rely on any of its fellow __script functions to
+#       have been called in the current context
+__script_help() { # Required
+  cat <<EOM
+===== $0 ====
+
+# Description:
+    The main runner docker wordpress compose server
+
+# How to Use:
+    $0 <...>
+
+# Inputs:
+    commands:
+        install_dependencies:
+            This flag is used to indicate that the script should install the necessary dependencies for the server to run
+            properly. This will create a file to indicate the dependencies are installed and avoid running the steps in this
+            function again in the future.
+
+        first-time-bring-up:
+            Docker bring with certbot requires proper interaction between the machines since their the SSL certs in this setup, get
+            downloaded and then are installed. This makes for a smaller form  factor and less overhead. This flag is used to
+            indicate that this is the first time the server is being brought up and the script should run the necessary steps to
+            bring up the server properly. This will create a file to indicate the first time bring up is complete and avoid running
+            the steps in this function again in the future.
+            NOTE: This flag will also run the install_dependencies flag.
+
+        enable-ssl-after-first-time-bring-up:
+            This flag is used to indicate that the server has already been brought up and the script should run the necessary steps
+            to enable SSL on the server. This will create a file to indicate the SSL is enabled complete and avoid running
+            the steps in this function again in the future.
+
+        nuke:
+            nuke. Don't use this unless you are sure
+    args:
+
+# Side Effects
+    None
+EOM
+
+  exit 1
+}
+
+# __script_parse_opts "${_script_opts}" (optional)
+#       Parse the options passed to execute_script.  This function can store
+#       values passed in via flags as global variables to be consumed by later
+#       stages. (see `declare -g` for setting global variables in a function)
+#       Note: arguments are not subsequently passed to __script_exec
+__script_parse_opts() { # Optional
+  echo "Parsing options for $0 ..."
+
+  declare -xg NGINX_DIR="${SCRIPT_DIR}/nginx"
+
+  # Set default values
+  declare -xg _do_first_time_bring_up_flag="false"
+  declare -xg _do_enable_ssl_after_first_time_bring_up_flag="false"
+
+  # Parse options
+  while (($#)); do
+    case "${1}" in
+    install_dependencies)
+      info "Running install_dependencies ..."
+      install_dependencies
+      exit 0
+      ;;
+    logs)
+      info "Running docker compose logs ..."
+      docker_compose_logs
+      exit 0
+      ;;
+    first-time-bring-up)
+      _do_first_time_bring_up_flag="true"
+      ;;
+    enable-ssl-after-first-time-bring-up)
+      _do_first_time_bring_up_flag="true"
+      _do_enable_ssl_after_first_time_bring_up_flag="true"
+      ;;
+    wp_setup)
+      info "Running wp_setup ..."
+      env -i bash --posix -c "${SCRIPT_DIR}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
+      exit 0
+      ;;
+    nuke)
+      source "${SCRIPT_DIR}/admin/webserver/nuke.sh"
+      __nuke
+      exit 1
+      ;;
+    -h | --help | help)
+      __script_help
+      exit
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      echo "call script with -h or --help to list available arguments"
+      exit 1
+      ;;
+    esac
+    shift
+  done
+
+  info "---------------------------------------------------------------------"
+  info "first_time_bring_up_flag:                       ${_do_first_time_bring_up_flag}"
+  info "enable_ssl_after_first_time_bring_up_flag:      ${_do_enable_ssl_after_first_time_bring_up_flag}"
+  info "---------------------------------------------------------------------"
+}
+
+# __script_init (optional)
+#       Initialize and validate the scripts environment.  This stage runs after
+#       __script_parse_opts, so global variables set by parse_opts will be
+#       available here.
+#       This stage is useful for ensuring build tools are present, and ensuring
+#       the necessary environment variables are set.
+__script_init() { # Optional
+  if [ "${_do_first_time_bring_up_flag}" = "true" ] ||
+    [ "${_do_enable_ssl_after_first_time_bring_up_flag}" = "true" ]; then
+    info "Initializing $0 ..."
+  fi
+}
+
+# __script_exec
+#       Execute the script! This function receives no arguments and it assumes
+#       the environment is fully configured before entering __script_exec. This
+#       architecture enforces good script writing practices and reduces script
+#       boilerplate for error handling.
+__script_exec() { # Required
+  if [ "${_do_first_time_bring_up_flag}" = "true" ]; then
+    info "Running first_time_bring_up ..."
+    first_time_bring_up
+  fi
+
+  if [ "${_do_enable_ssl_after_first_time_bring_up_flag}" = "true" ]; then
+    info "Running enable_ssl_after_first_time_bring_up_flag ..."
+    enable_ssl_after_first_time_bring_up_flag
+  fi
+
+  # NOTE: This is where you would add any other functions to run
+}
+
+# __script_succeed (optional)
+#       If __script_exec succeeds, __script_succeed is evaluated.  This can be
+#       used to provide feedback to the user about the success, or trigger
+#       post-script-success logic
+__script_succeed() { # Optional
+  ok "$0 succeeded!!!"
+}
+
+# __script_failed (optional)
+#       If __script_exec fails, __script_failed is evaluated.  This can be used
+#       to provide feedback to the user about the failure and trigger
+#       post-script-failed logic.
+__script_failed() { # Optional
+  error "$0 failed (aka the nonstandard-exit method)!!!"
+
+  # docker container list
+  # docker volume list
+  # docker compose down
+  # docker volume rm \
+  #   "${SCRIPT_DIR%/*}_wordpress_volume" \
+  #   "${SCRIPT_DIR%/*}_dbdata_volume" \
+  #   "${SCRIPT_DIR%/*}_certbot-etc_volume"
+  # sudo rm -rf src/
+}
+
+# __script_cleanup
+#       __script_cleanup is run as the very last step of
+#       execute script, after __script_succeed/__script_failed.  This can be
+#       leveraged to perform any necessary cleanup regardless of the scripts
+#       exit status
+__script_cleanup() {
+  if [ $? -eq 0 ]; then
+    __script_succeed
+  else
+    __script_failed
+  fi
+
+  # Optional
+  # info "Cleaning up potential dirty state ..."
+}
+
+# install_dependencies
+#       This function will install the necessary dependencies for the to be installed server to run properly.
+#       The function is designed to only install the individual dependencies if it detects if the particular
+#       dependencies are not installed/missing.
+install_dependencies() {
+  info "Checking/Installing dependencies ..."
+  source "${SCRIPT_DIR}/tools/common/dependencies.sh"
+  install_basic_packages
+  install_webapp_packages
+  setup_docker
+  # install_miscellaneous_packages # NOTE: This has not been tested yet
+}
+
+# first_time_bring_up
+#       This function will bring up the server for the first time. It will create the necessary files and directories
+#       for the server to run properly. It will also create the necessary docker containers and volumes for the server
+#       to run properly. This function will also create a file to indicate the first time bring up is complete and avoid
+#       running this function again in the future.
+first_time_bring_up() {
+  info "First time bring up"
+
+  if [ -e "${SCRIPT_DIR}/.first_time_bring_up_complete" ]; then
+    warn "Detected server first time bring up process completed, don't need to run this process again"
+    return
+  fi
+
+  # pull in the variables from the .env file
+  . "${SCRIPT_DIR}/.env"
+
+  # # disable any local MySQL instances to perform next tasks
+  # sudo systemctl stop mysql &>/dev/null || true
+  # sudo systemctl disable mysql &>/dev/null || true
+
+  info "Changing the Certbot staging flag here if we are ready i.e. getting TEST certs for SSL certs docker-compose.yml..."
+  sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--staging/' "${SCRIPT_DIR}/.env"
+
+  # Ensure the necessary dependencies are installed
+  install_dependencies
+
+  # set the default nginx template to the no ssl template for first time bring up for certbot pull just certs
+  rm -f "${NGINX_DIR}/templates/default.conf.template"
+  cp -f "${NGINX_DIR}/templates/default.nginx.conf.no.ssl.template" "${NGINX_DIR}/templates/default.conf.template"
+
+  docker compose up -d
+
+  info "Waiting for server to start up. It will take about ~2-3 minutes..."
+  countdown "00:02:30"
+
+  docker ps
+
+  info "Getting logs from all containers created in docker-compose.yml..."
+  local compose_service
+  for compose_service in $(yq '.services | keys[]' docker-compose.yml); do
+    compose_service=${compose_service//\"/}
+    local named_service=${CONTAINER_NAME}-${compose_service}
+    info "${named_service}: \"docker compose logs ${compose_service}\""
+    docker compose logs "${compose_service}"
+  done
+
+  # Check if wordpress files were created
+  [ -e "${SCRIPT_DIR}/src" ] ||
+    error "Wordpress files not found. Did server appeared to fail to complete successfully"
+
+  # Create a file to indicate first time bring up is complete and avoid
+  # running this function again
+  touch "${SCRIPT_DIR}"/.first_time_bring_up_complete
+  info "First time bring up complete"
+}
+
+# enable_ssl_after_first_time_bring_up_flag
+#       This function will enable SSL on the server after the server has been brought up for the first time. It will
+#       create the necessary files and directories for the server to run properly. It will also create the necessary
+#       docker containers and volumes for the server to run properly. This function will also create a file to indicate
+#       the SSL is enabled complete and avoid running this function again in the future.
+# shellcheck disable=SC2120
+enable_ssl_after_first_time_bring_up_flag() {
+  local WEB_SERVICE_NAME="${1:-webserver}"
+  local CERT_SERVICE_NAME="${2:-certbot}"
+  info "Add and Enable SSL in ${WEB_SERVICE_NAME} in configuration"
+
+  if [ ! -e "${SCRIPT_DIR}/.first_time_bring_up_complete" ]; then
+    warn "Webserver needs to have successfully started first time bring up process to run this process."
+    return
+  fi
+
+  if [ -e "${SCRIPT_DIR}/.enable_ssl_after_first_time_bring_up_complete" ]; then
+    warn "Detected SSL webserver configuration process completed, don't need to run this process again."
+    return
+  fi
+
+  # pull in the variables from the .env file
+  . "${SCRIPT_DIR}/.env"
+
+  # Set the flag to force renewal of the certbot certs to get PROD certs
+  info "Changing the Certbot staging flag here to get PROD SSL certs docker-compose.yml..."
+  sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--force-renewal/' "${SCRIPT_DIR}/.env"
+
+  info "Checking if domain directory exists, then checking if for certificates and key for SSL..."
+  docker compose exec "${WEB_SERVICE_NAME}" ls -la /etc/letsencrypt/live
+  docker compose exec "${WEB_SERVICE_NAME}" ls -la /etc/letsencrypt/live/"${DOMAIN_NAME}"
+
+  info "Obtaining production certificates..."
+  docker compose up --force-recreate --no-deps "${CERT_SERVICE_NAME}"
+
+  info "Stopping the service(${WEB_SERVICE_NAME}) for configuration modifications..."
+  docker compose stop "${WEB_SERVICE_NAME}"
+
+  info "Changing the service(${WEB_SERVICE_NAME}) configuration to use SSL certs..."
+  rm -f "${NGINX_DIR}/templates/default.conf.template"
+  cp -f "${NGINX_DIR}/templates/default.nginx.conf.with.ssl.template" "${NGINX_DIR}/templates/default.conf.template"
+
+  info "Recreating the service(${WEB_SERVICE_NAME}) with reloaded configuration ..."
+  docker compose up -d --force-recreate --no-deps "${WEB_SERVICE_NAME}"
+
+  info "${CONTAINER_NAME}-${CERT_SERVICE_NAME}: \"docker compose logs ${CERT_SERVICE_NAME}\""
+  docker compose logs "${CERT_SERVICE_NAME}"
+
+  info "${CONTAINER_NAME}-${WEB_SERVICE_NAME}: \"docker compose logs ${WEB_SERVICE_NAME}\""
+  docker compose logs "${WEB_SERVICE_NAME}"
+
+  # Create a file to indicate first time bring up is complete and avoid to rerunning this function again
+  touch "${SCRIPT_DIR}"/.enable_ssl_after_first_time_bring_up_complete
+  info "SSL enabled in ${WEB_SERVICE_NAME} complete"
+}
+
+docker_compose_logs() {
+  info "Getting logs from all containers created in docker-compose.yml..."
+  . "${SCRIPT_DIR}/.env"
+  local compose_service
+  for compose_service in $(yq '.services | keys[]' docker-compose.yml); do
+    compose_service=${compose_service//\"/}
+    local named_service=${CONTAINER_NAME}-${compose_service}
+    info "${named_service}: \"docker compose logs ${compose_service}\""
+    docker compose logs "${compose_service}"
+  done
+}
+
+# ===== Main Script Workflow =====
+trap __script_cleanup EXIT
+
+__script_parse_opts "${@}"
+__script_init
+__script_exec

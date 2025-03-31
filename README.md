@@ -9,14 +9,14 @@ Another Docker Configuration for Local WordPress development
 -   Install Git
     -   if Linux and debian/ubuntu
         -   `sudo apt install git`
-    -   if Windows
-        -   [Git SCM](https://git-scm.com/downloads/win)
-        -   [Github Desktop](https://desktop.github.com/download/) (Recommended)
 -   Install [Docker](https://docs.docker.com/)
 -   Install [Docker Compose](https://docs.docker.com/compose/)
 -   Install [mkcert](https://github.com/FiloSottile/mkcert)
     -   If Ubuntu/Debian,
         -   `sudo apt install golang` is needed to build to install mkcert
+-   Install [yq](https://github.com/mikefarah/yq)
+    -   If Ubuntu/Debian,
+        -   sudo apt-get update && sudo apt-get install -y yq
 
 #### Initialization
 
