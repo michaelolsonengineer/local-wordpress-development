@@ -78,14 +78,7 @@ services:
         volumes:
             - wordpress_volume:/var/www/html
         links:
-            # Source: https://medium.com/@tatemz/local-wordpress-development-with-docker-3-easy-steps-a7c375366b9#.sgazilrgo
-            # Notice that we are linking our database container onto our database container.
-            # More specifically, we are telling my-wp that it will refer to the database container
-            # with an alias named “mysql”. This is because the shell script in the WordPress container
-            # has hardcoded the database hostname as “mysql”.
-            # See: https://github.com/docker-library/wordpress/blob/6afa0720da89f31d6c61fd38bb0d6de6e9a14a49/apache/docker-entrypoint.sh#L5
-            # Docker is just magically assigning a hostname to the database IP address.
-            - database:mysql
+            - database
         networks:
             - app-network
 

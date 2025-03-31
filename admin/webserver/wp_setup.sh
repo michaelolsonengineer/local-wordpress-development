@@ -70,6 +70,7 @@ __script_parse_opts() { # Optional
   declare -xg wordpress_admin_username
   declare -xg wordpress_admin_pass
   declare -xg wordpress_blog_title
+  # shellcheck disable=SC2155
   declare -xg temp_dir=$(mktemp -d)
 
   echo "Temporary directory created: ${temp_dir}"
@@ -107,6 +108,7 @@ __script_init() { # Optional
   local dkc_exec="docker compose exec"
   local built_cmd
   local exec_cmd
+  local database_docker_ip
   local sideload_wordpress_setup_script="help_wp_setup.sh"
 
   # if applicable, configure wordpress to use mysql dbaas
@@ -114,12 +116,16 @@ __script_init() { # Optional
     # grab all the data from the password file
     . "${environment_file}"
 
+    # FIXME: this require docker compose commands ... I think ... to get the host on the virtual network ... so this is tricky
+    database_docker_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CONTAINER_NAME}-database")"
+
     # update the wp-config.php with stored credentials
     echo "#!/bin/sh" >"${temp_dir}/${sideload_wordpress_setup_script}"
     {
       __build_sed_replace DB_USER "${DATABASE_USER}"
       __build_sed_replace DB_NAME "${DATABASE_NAME}"
       __build_sed_replace DB_PASSWORD "${DATABASE_PASSWORD}"
+      __build_sed_replace DB_HOST "${database_docker_ip}"
     } >>"${temp_dir}/${sideload_wordpress_setup_script}"
 
     # FIXME: TODO: Need to Test
@@ -143,9 +149,6 @@ __script_init() { # Optional
     ${dkc_exec} wordpress rm "${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
     set +x
     # Disable it extra verbosity since it was needed for docker compose commands
-
-    # FIXME: this require docker compose commands ... I think ... to get the host on the virtual network ... so this is tricky
-    # sed -i "s/'DB_HOST', '.*'/'DB_HOST', '$host:${DATABASE_PORT}'/g" ${WEBSERVER_ROOT}/wp-config.php
 
     # wait for db to become available
     echo -e "\nWaiting for your database to become available (this may take a few minutes)"
@@ -223,7 +226,6 @@ __script_init() { # Optional
 #       architecture enforces good script writing practices and reduces script
 #       boilerplate for error handling.
 __script_exec() { # Required
-
   # FIXME: this need to be done differently with a script I think
   # follow instructions on https://www.digitalocean.com/community/tutorials/how-to-install-wordpress-with-docker-compose
   # echo -en "\n\n\n"
@@ -241,7 +243,7 @@ __script_exec() { # Required
   # *) echo "Please answer y or n." ;;
   # esac
 
-  echo -en "Completing the configuration of WordPress."
+  info "Completing the configuration of WordPress."
   set -x
   docker compose run --rm wordpress-cli core install \
     --allow-root \
@@ -252,20 +254,11 @@ __script_exec() { # Required
     --admin_password="${wordpress_admin_pass}" \
     --admin_user="${wordpress_admin_username}"
 
-  docker compose run --rm wordpress-cli plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
-  docker compose run --rm wordpress-cli plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
+  docker compose run --rm wordpress-cli \
+    plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
+  docker compose run --rm wordpress-cli \
+    plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
   set +x
-
-  info "Bringing server back up ..."
-  docker compose up -d
-
-  info "Waiting for your database to become available (this may take a few minutes) ..."
-  info "If this take too much time you may need to cancel over +5 min then, press Ctrl+C."
-  while ! mysqladmin ping -h "${DOMAIN_NAME}" -P "${DATABASE_PORT}" --silent; do
-    printf .
-    sleep 2
-  done
-  echo -e "\nDatabase available!\n"
 }
 
 # __script_succeed (optional)
@@ -297,6 +290,17 @@ __script_cleanup() {
     __script_failed
   fi
 
+  info "Bringing server back up ..."
+  docker compose up -d
+
+  info "Waiting for your database to become available (this may take a few minutes) ..."
+  info "If this take too much time you may need to cancel over +5 min then, press Ctrl+C."
+  while ! mysqladmin ping -h "${DOMAIN_NAME}" -P "${DATABASE_PORT}" --silent; do
+    printf .
+    sleep 2
+  done
+  echo -e "\nDatabase available!\n"
+
   # Optional
   # info "Cleaning up potential dirty state ..."
   unset environment_file
@@ -305,9 +309,9 @@ __script_cleanup() {
   unset wordpress_admin_pass
   unset wordpress_blog_title
 
-  # rm -rf "${temp_dir}"
+  rm -rf "${temp_dir}"
 
-  # unset temp_dir
+  unset temp_dir
 }
 
 # Example Output:
