@@ -88,6 +88,11 @@ __script_parse_opts() { # Optional
       install_dependencies
       exit 0
       ;;
+    logs)
+      info "Running docker compose logs ..."
+      docker_compose_logs
+      exit 0
+      ;;
     first-time-bring-up)
       _do_first_time_bring_up_flag="true"
       ;;
@@ -316,6 +321,18 @@ enable_ssl_after_first_time_bring_up_flag() {
   # Create a file to indicate first time bring up is complete and avoid to rerunning this function again
   touch "${SCRIPT_DIR}"/.enable_ssl_after_first_time_bring_up_complete
   info "SSL enabled in ${WEB_SERVICE_NAME} complete"
+}
+
+docker_compose_logs() {
+  info "Getting logs from all containers created in docker-compose.yml..."
+  . "${SCRIPT_DIR}/.env"
+  local compose_service
+  for compose_service in $(yq '.services | keys[]' docker-compose.yml); do
+    compose_service=${compose_service//\"/}
+    local named_service=${CONTAINER_NAME}-${compose_service}
+    info "${named_service}: \"docker compose logs ${compose_service}\""
+    docker compose logs "${compose_service}"
+  done
 }
 
 # ===== Main Script Workflow =====

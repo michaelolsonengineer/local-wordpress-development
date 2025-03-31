@@ -176,23 +176,23 @@ __script_init() { # Optional
 
   # Get user prompt user information till properly given non-empty input
   prompt_user_for_wordpress_admin_account() {
-    while [ -z "${wordpress_admin_email}" ]; do
+    while [ -z "${wordpress_admin_email-}" ]; do
       echo -en "\n"
       read -rp "Your Email Address: " wordpress_admin_email
     done
 
-    while [ -z "${wordpress_admin_username}" ]; do
+    while [ -z "${wordpress_admin_username-}" ]; do
       echo -en "\n"
       read -rp "Username: " wordpress_admin_username
     done
 
-    while [ -z "${wordpress_admin_pass}" ]; do
+    while [ -z "${wordpress_admin_pass-}" ]; do
       echo -en "\n"
       read -s -rp "Password: " wordpress_admin_pass
       echo -en "\n"
     done
 
-    while [ -z "$wordpress_blog_title" ]; do
+    while [ -z "${wordpress_blog_title-}" ]; do
       echo -en "\n"
       read -rp "Blog Title: " wordpress_blog_title
     done
@@ -242,7 +242,8 @@ __script_exec() { # Required
   # esac
 
   echo -en "Completing the configuration of WordPress."
-  wp core install \
+  set -x
+  docker compose run --rm wordpress-cli core install \
     --allow-root \
     --path="${WEBSERVER_ROOT}" \
     --title="${wordpress_blog_title}" \
@@ -251,9 +252,9 @@ __script_exec() { # Required
     --admin_password="${wordpress_admin_pass}" \
     --admin_user="${wordpress_admin_username}"
 
-  wp plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
-  wp plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
-  chown -Rf www-data.www-data /var/www/
+  docker compose run --rm wordpress-cli plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
+  docker compose run --rm wordpress-cli plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
+  set +x
 
   info "Bringing server back up ..."
   docker compose up -d
