@@ -66,9 +66,9 @@ __script_parse_opts() { # Optional
   # Set default values
   declare -xg WEB_SERVICE_NAME="webserver"
   declare -xg environment_file="${WORKSPACE}/.env"
-  declare -xg wordpress_admin_email
-  declare -xg wordpress_admin_username
-  declare -xg wordpress_admin_pass
+  declare -xg WORDPRESS_ADMIN_EMAIL
+  declare -xg WORDPRESS_ADMIN_USER
+  declare -xg WORDPRESS_ADMIN_PASSWORD
   declare -xg wordpress_blog_title
   # shellcheck disable=SC2155
   declare -xg temp_dir=$(mktemp -d)
@@ -128,6 +128,7 @@ __script_init() { # Optional
   # if applicable, configure wordpress to use mysql dbaas
   if [ -e "${environment_file}" ]; then
     # grab all the data from the password file
+    info "Loading environment installed configurations server from ${environment_file} ..."
     . "${environment_file}"
 
     # wait for db to become available
@@ -173,23 +174,24 @@ __script_init() { # Optional
     set +x
   fi
 
-  info "Now we will create your new admin user account for WordPress."
+  info "Now we will create your new admin user account for WordPress"
+  info "and we will also prompt for server blog title. "
 
   # Get user prompt user information till properly given non-empty input
   prompt_user_for_wordpress_admin_account() {
-    while [ -z "${wordpress_admin_email-}" ]; do
+    while [ -z "${WORDPRESS_ADMIN_EMAIL-}" ]; do
       echo -en "\n"
-      read -rp "Your Email Address: " wordpress_admin_email
+      read -rp "Your Email Address: " WORDPRESS_ADMIN_EMAIL
     done
 
-    while [ -z "${wordpress_admin_username-}" ]; do
+    while [ -z "${WORDPRESS_ADMIN_USER-}" ]; do
       echo -en "\n"
-      read -rp "Username: " wordpress_admin_username
+      read -rp "Username: " WORDPRESS_ADMIN_USER
     done
 
-    while [ -z "${wordpress_admin_pass-}" ]; do
+    while [ -z "${WORDPRESS_ADMIN_PASSWORD-}" ]; do
       echo -en "\n"
-      read -s -rp "Password: " wordpress_admin_pass
+      read -s -rp "Password: " WORDPRESS_ADMIN_PASSWORD
       echo -en "\n"
     done
 
@@ -203,14 +205,15 @@ __script_init() { # Optional
 
   while true; do
     echo -en "\n"
+    info "Note: admin and title details will be prompted for again if dismissed. "
     read -rp "Is the information correct? [Y/n] " confirmation
     confirmation=${confirmation,,}
     if [[ "${confirmation}" =~ ^(yes|y)$ ]] || [ -z "${confirmation}" ]; then
       break
     else
-      unset wordpress_admin_email
-      unset wordpress_admin_username
-      unset wordpress_admin_pass
+      unset WORDPRESS_ADMIN_EMAIL
+      unset WORDPRESS_ADMIN_USER
+      unset WORDPRESS_ADMIN_PASSWORD
       unset wordpress_blog_title
 
       prompt_user_for_wordpress_admin_account
@@ -250,13 +253,13 @@ __script_exec() { # Required
     --path="${WEBSERVER_ROOT}" \
     --title="${wordpress_blog_title}" \
     --url="${DOMAIN_NAME}" \
-    --admin_email="${wordpress_admin_email}" \
-    --admin_password="${wordpress_admin_pass}" \
-    --admin_user="${wordpress_admin_username}"
+    --admin_email="${WORDPRESS_ADMIN_EMAIL}" \
+    --admin_password="${WORDPRESS_ADMIN_PASSWORD}" \
+    --admin_user="${WORDPRESS_ADMIN_USER}"
 
   # NOTE: make a script to create users. Accidentally deleted user during testing. Leaving here for now
   # docker compose run --rm wordpress-cli user create \
-  #   "${wordpress_admin_username}" "${wordpress_admin_email}" --role=administrator --user_pass="${wordpress_admin_pass}"
+  #   "${WORDPRESS_ADMIN_USER}" "${WORDPRESS_ADMIN_EMAIL}" --role=administrator --user_pass="${WORDPRESS_ADMIN_PASSWORD}"
 
   docker compose run --rm wordpress-cli \
     plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
@@ -297,9 +300,9 @@ __script_cleanup() {
   # Optional
   # info "Cleaning up potential dirty state ..."
   unset environment_file
-  unset wordpress_admin_email
-  unset wordpress_admin_username
-  unset wordpress_admin_pass
+  unset WORDPRESS_ADMIN_EMAIL
+  unset WORDPRESS_ADMIN_USER
+  unset WORDPRESS_ADMIN_PASSWORD
   unset wordpress_blog_title
 
   rm -rf "${temp_dir}"
