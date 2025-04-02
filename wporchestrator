@@ -236,7 +236,7 @@ first_time_bring_up() {
   info "First time bring up"
 
   if [ -e "${WORKSPACE}/.first_time_bring_up_complete" ]; then
-    warn "Detected server first time bring up process completed, don't need to run this process again"
+    warning "Detected server first time bring up process completed, don't need to run this process again"
     return
   fi
 
