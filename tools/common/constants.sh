@@ -14,6 +14,8 @@ declare -xg WORKSPACE="$(cd "${TOOLS_COMMON_DIR}/../../" && pwd)"
 
 declare -xg DOCKER="/usr/bin/docker"
 declare -xg WEBSERVER_ROOT="/var/www/html"
+declare -xg WS_NGINX_DIR="${WORKSPACE}/nginx"
+declare -xg WS_ENV_FILE="${WORKSPACE}/.env"
 
 #=======================================
 #       Color and style definitions

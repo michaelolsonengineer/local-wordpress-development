@@ -152,13 +152,16 @@ __script_init() { # Optional
       __build_sed_replace DB_HOST "${database_docker_ip}"
     } >>"${temp_dir}/${sideload_wordpress_setup_script}"
 
-    # FIXME: TODO: Need to Test
-    # # add required SSL flag
-    # if [ -e "${WORKSPACE}/.enable_ssl_after_first_time_bring_up_complete" ]; then
-    #   # add required SSL flag
-    #   echo "echo '/** Connect to MySQL cluster over SSL **/' >>${WEBSERVER_ROOT}/wp-config.php" >> "${temp_dir}/${sideload_wordpress_setup_script}"
-    #   echo "echo 'define( 'MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL );' >>${WEBSERVER_ROOT}/wp-config.php" >> "${temp_dir}/${sideload_wordpress_setup_script}"
-    # fi
+    # add required SSL flag
+    if [ -e "${WORKSPACE}/.enable_ssl_after_first_time_bring_up_complete" ]; then
+      if ! grep -q "MYSQLI_CLIENT_SSL" "${WEBSERVER_ROOT}/wp-config.php"; then
+        # add required SSL flag
+        echo "echo '/** Connect to MySQL cluster over SSL **/' >>${WEBSERVER_ROOT}/wp-config.php" >>"${temp_dir}/${sideload_wordpress_setup_script}"
+        echo "echo 'define( 'MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL );' >>${WEBSERVER_ROOT}/wp-config.php" >>"${temp_dir}/${sideload_wordpress_setup_script}"
+      else
+        info "MYSQLI_CLIENT_SSL is already defined in ${WEBSERVER_ROOT}/wp-config.php"
+      fi
+    fi
 
     info "Going to execute on wordpress docker container the following ... $(cat "${temp_dir}/${sideload_wordpress_setup_script}")"
 
