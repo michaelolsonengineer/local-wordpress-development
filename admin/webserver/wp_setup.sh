@@ -140,16 +140,13 @@ __script_init() { # Optional
     done
     echo -e "\nDatabase available!\n"
 
-    # FIXME: this require docker compose commands ... I think ... to get the host on the virtual network ... so this is tricky
-    database_docker_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CONTAINER_NAME}-database")"
-
     # update the wp-config.php with stored credentials
     echo "#!/bin/sh" >"${temp_dir}/${sideload_wordpress_setup_script}"
     {
       __build_sed_replace DB_USER "${DATABASE_USER}"
       __build_sed_replace DB_NAME "${DATABASE_NAME}"
       __build_sed_replace DB_PASSWORD "${DATABASE_PASSWORD}"
-      __build_sed_replace DB_HOST "${database_docker_ip}"
+      __build_sed_replace DB_HOST "${CONTAINER_NAME}-database"
     } >>"${temp_dir}/${sideload_wordpress_setup_script}"
 
     # add required SSL flag
@@ -232,6 +229,8 @@ __script_init() { # Optional
 #       architecture enforces good script writing practices and reduces script
 #       boilerplate for error handling.
 __script_exec() { # Required
+  local wp_cli
+
   # FIXME: this need to be done differently with a script I think
   # follow instructions on https://www.digitalocean.com/community/tutorials/how-to-install-wordpress-with-docker-compose
   # echo -en "\n\n\n"
@@ -250,8 +249,12 @@ __script_exec() { # Required
   # esac
 
   info "Completing the configuration of WordPress ..."
+
+  # echo the command to the user
   set -x
-  docker compose run --rm wordpress-cli core install \
+  wp_cli="docker compose run --rm wordpress-cli"
+
+  ${wp_cli} core install \
     --allow-root \
     --path="${WEBSERVER_ROOT}" \
     --title="${wordpress_blog_title}" \
@@ -261,13 +264,18 @@ __script_exec() { # Required
     --admin_user="${WORDPRESS_ADMIN_USER}"
 
   # NOTE: make a script to create users. Accidentally deleted user during testing. Leaving here for now
-  # docker compose run --rm wordpress-cli user create \
+  # ${wp_cli} user create \
   #   "${WORDPRESS_ADMIN_USER}" "${WORDPRESS_ADMIN_EMAIL}" --role=administrator --user_pass="${WORDPRESS_ADMIN_PASSWORD}"
 
-  docker compose run --rm wordpress-cli \
-    plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
-  docker compose run --rm wordpress-cli \
-    plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
+  ${wp_cli} option update permalink_structure "/%postname%/" --skip-themes --skip-plugins ||
+    error "failed to install set permalink structure through wp-cli ..."
+
+  # # FIXME: TODO: need to install fail2ban on host or in a docker to proper make this actually meaningful
+  # (
+  #   ${wp_cli} plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}" &&
+  #     ${wp_cli} plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
+  # ) || error "failed to install and activate fail2ban through wp-cli ..."
+
   set +x
 }
 
