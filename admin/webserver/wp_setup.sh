@@ -66,9 +66,9 @@ __script_parse_opts() { # Optional
   # Set default values
   declare -xg WEB_SERVICE_NAME="webserver"
   declare -xg environment_file="${WORKSPACE}/.env"
-  declare -xg wordpress_admin_email
-  declare -xg wordpress_admin_username
-  declare -xg wordpress_admin_pass
+  declare -xg WORDPRESS_ADMIN_EMAIL
+  declare -xg WORDPRESS_ADMIN_USER
+  declare -xg WORDPRESS_ADMIN_PASSWORD
   declare -xg wordpress_blog_title
   # shellcheck disable=SC2155
   declare -xg temp_dir=$(mktemp -d)
@@ -128,6 +128,7 @@ __script_init() { # Optional
   # if applicable, configure wordpress to use mysql dbaas
   if [ -e "${environment_file}" ]; then
     # grab all the data from the password file
+    info "Loading environment installed configurations server from ${environment_file} ..."
     . "${environment_file}"
 
     # wait for db to become available
@@ -139,25 +140,25 @@ __script_init() { # Optional
     done
     echo -e "\nDatabase available!\n"
 
-    # FIXME: this require docker compose commands ... I think ... to get the host on the virtual network ... so this is tricky
-    database_docker_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "${CONTAINER_NAME}-database")"
-
     # update the wp-config.php with stored credentials
     echo "#!/bin/sh" >"${temp_dir}/${sideload_wordpress_setup_script}"
     {
       __build_sed_replace DB_USER "${DATABASE_USER}"
       __build_sed_replace DB_NAME "${DATABASE_NAME}"
       __build_sed_replace DB_PASSWORD "${DATABASE_PASSWORD}"
-      __build_sed_replace DB_HOST "${database_docker_ip}"
+      __build_sed_replace DB_HOST "${CONTAINER_NAME}-database"
     } >>"${temp_dir}/${sideload_wordpress_setup_script}"
 
-    # FIXME: TODO: Need to Test
-    # # add required SSL flag
-    # if [ -e "${WORKSPACE}/.enable_ssl_after_first_time_bring_up_complete" ]; then
-    #   # add required SSL flag
-    #   echo "echo '/** Connect to MySQL cluster over SSL **/' >>${WEBSERVER_ROOT}/wp-config.php" >> "${temp_dir}/${sideload_wordpress_setup_script}"
-    #   echo "echo 'define( 'MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL );' >>${WEBSERVER_ROOT}/wp-config.php" >> "${temp_dir}/${sideload_wordpress_setup_script}"
-    # fi
+    # add required SSL flag
+    if [ -e "${WORKSPACE}/.enable_ssl_after_first_time_bring_up_complete" ]; then
+      if ! grep -q "MYSQLI_CLIENT_SSL" "${WEBSERVER_ROOT}/wp-config.php"; then
+        # add required SSL flag
+        echo "echo \"/** Connect to MySQL cluster over SSL **/\" >>${WEBSERVER_ROOT}/wp-config.php" >>"${temp_dir}/${sideload_wordpress_setup_script}"
+        echo "echo \"define( 'MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL );\" >>${WEBSERVER_ROOT}/wp-config.php" >>"${temp_dir}/${sideload_wordpress_setup_script}"
+      else
+        info "MYSQLI_CLIENT_SSL is already defined in ${WEBSERVER_ROOT}/wp-config.php"
+      fi
+    fi
 
     info "Going to execute on wordpress docker container the following ... $(cat "${temp_dir}/${sideload_wordpress_setup_script}")"
 
@@ -173,23 +174,24 @@ __script_init() { # Optional
     set +x
   fi
 
-  info "Now we will create your new admin user account for WordPress."
+  info "Now we will create your new admin user account for WordPress"
+  info "and we will also prompt for server blog title. "
 
   # Get user prompt user information till properly given non-empty input
   prompt_user_for_wordpress_admin_account() {
-    while [ -z "${wordpress_admin_email-}" ]; do
+    while [ -z "${WORDPRESS_ADMIN_EMAIL-}" ]; do
       echo -en "\n"
-      read -rp "Your Email Address: " wordpress_admin_email
+      read -rp "Your Email Address: " WORDPRESS_ADMIN_EMAIL
     done
 
-    while [ -z "${wordpress_admin_username-}" ]; do
+    while [ -z "${WORDPRESS_ADMIN_USER-}" ]; do
       echo -en "\n"
-      read -rp "Username: " wordpress_admin_username
+      read -rp "Username: " WORDPRESS_ADMIN_USER
     done
 
-    while [ -z "${wordpress_admin_pass-}" ]; do
+    while [ -z "${WORDPRESS_ADMIN_PASSWORD-}" ]; do
       echo -en "\n"
-      read -s -rp "Password: " wordpress_admin_pass
+      read -s -rp "Password: " WORDPRESS_ADMIN_PASSWORD
       echo -en "\n"
     done
 
@@ -203,14 +205,15 @@ __script_init() { # Optional
 
   while true; do
     echo -en "\n"
+    info "Note: admin and title details will be prompted for again if dismissed. "
     read -rp "Is the information correct? [Y/n] " confirmation
     confirmation=${confirmation,,}
     if [[ "${confirmation}" =~ ^(yes|y)$ ]] || [ -z "${confirmation}" ]; then
       break
     else
-      unset wordpress_admin_email
-      unset wordpress_admin_username
-      unset wordpress_admin_pass
+      unset WORDPRESS_ADMIN_EMAIL
+      unset WORDPRESS_ADMIN_USER
+      unset WORDPRESS_ADMIN_PASSWORD
       unset wordpress_blog_title
 
       prompt_user_for_wordpress_admin_account
@@ -226,6 +229,8 @@ __script_init() { # Optional
 #       architecture enforces good script writing practices and reduces script
 #       boilerplate for error handling.
 __script_exec() { # Required
+  local wp_cli
+
   # FIXME: this need to be done differently with a script I think
   # follow instructions on https://www.digitalocean.com/community/tutorials/how-to-install-wordpress-with-docker-compose
   # echo -en "\n\n\n"
@@ -244,24 +249,65 @@ __script_exec() { # Required
   # esac
 
   info "Completing the configuration of WordPress ..."
+
+  # echo the command to the user
   set -x
-  docker compose run --rm wordpress-cli core install \
+  wp_cli="docker compose run --rm wordpress-cli"
+
+  info "Performing core setup ... Setting title, admin-user, url, etc ..."
+  ${wp_cli} core install \
     --allow-root \
     --path="${WEBSERVER_ROOT}" \
     --title="${wordpress_blog_title}" \
     --url="${DOMAIN_NAME}" \
-    --admin_email="${wordpress_admin_email}" \
-    --admin_password="${wordpress_admin_pass}" \
-    --admin_user="${wordpress_admin_username}"
+    --admin_email="${WORDPRESS_ADMIN_EMAIL}" \
+    --admin_password="${WORDPRESS_ADMIN_PASSWORD}" \
+    --admin_user="${WORDPRESS_ADMIN_USER}"
 
   # NOTE: make a script to create users. Accidentally deleted user during testing. Leaving here for now
-  # docker compose run --rm wordpress-cli user create \
-  #   "${wordpress_admin_username}" "${wordpress_admin_email}" --role=administrator --user_pass="${wordpress_admin_pass}"
+  # ${wp_cli} user create \
+  #   "${WORDPRESS_ADMIN_USER}" "${WORDPRESS_ADMIN_EMAIL}" --role=administrator --user_pass="${WORDPRESS_ADMIN_PASSWORD}"
 
-  docker compose run --rm wordpress-cli \
-    plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
-  docker compose run --rm wordpress-cli \
-    plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
+  # Select the permalink structure for your website. Including the %postname% tag makes links easy to understand,
+  # and can help your posts rank higher in search engines.
+  info "Set the permalink structure for your website. ..."
+  ${wp_cli} option update permalink_structure "/%postname%/" --skip-themes --skip-plugins ||
+    error "failed to install set permalink structure through wp-cli ..."
+
+  info "Set default timezone, timeformat, start of the week information ..."
+  ${wp_cli} option update timezone_string "America/Detroit" ||
+    error "failed to setup timezone to Detroit through wp-cli ..."
+  ${wp_cli} option update time_format "g:i A" ||
+    error "failed to setup time format to look like \"2:15 PM\" through wp-cli ..."
+  ${wp_cli} option update start_of_week 0 ||
+    error "failed to set start of the week to be Sunday through wp-cli ..."
+
+  info "Activating Hello-Dolly. It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
+  info "Hello, Dolly. When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
+  info "And if you want to remove it, SHAME on you ..."
+  ${wp_cli} plugin activate hello ||
+    error "failed to activate hello-dolly and symbolizes the hope and enthusiasm so SHAME on those who delete it ..."
+
+  # Remove old default themes
+  info "Removing default themes (twentyfifteen, twentythirteen, twentyfourteen) ..."
+  ${wp_cli} theme delete twentyfifteen ||
+    error "failed to delete theme twentyfifteen through wp-cli ..."
+  ${wp_cli} theme delete twentythirteen ||
+    error "failed to delete theme twentythirteen through wp-cli ..."
+  ${wp_cli} theme delete twentyfourteen ||
+    error "failed to delete theme twentyfourteen through wp-cli ..."
+
+  # Remove default posts, widgets, comments etc.
+  info "Removing default posts, widgets, comments etc ..."
+  ${wp_cli} site empty --yes ||
+    error "failed to remove default posts, widgets, comments etc through wp-cli ..."
+
+  # # FIXME: TODO: need to install fail2ban on host or in a docker to proper make this actually meaningful
+  # (
+  #   ${wp_cli} plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}" &&
+  #     ${wp_cli} plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
+  # ) || error "failed to install and activate fail2ban through wp-cli ..."
+
   set +x
 }
 
@@ -297,9 +343,9 @@ __script_cleanup() {
   # Optional
   # info "Cleaning up potential dirty state ..."
   unset environment_file
-  unset wordpress_admin_email
-  unset wordpress_admin_username
-  unset wordpress_admin_pass
+  unset WORDPRESS_ADMIN_EMAIL
+  unset WORDPRESS_ADMIN_USER
+  unset WORDPRESS_ADMIN_PASSWORD
   unset wordpress_blog_title
 
   rm -rf "${temp_dir}"

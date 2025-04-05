@@ -16,6 +16,7 @@ set -u
 declare -xg SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/tools/common/constants.sh"
 source "${SCRIPT_DIR}/tools/common/general_utils.sh"
+# NOTE: WORKSPACE=$SCRIPT_DIR
 
 #------------------------------------------------------------------------------
 
@@ -74,15 +75,17 @@ EOM
 __script_parse_opts() { # Optional
   echo "Parsing options for $0 ..."
 
-  declare -xg NGINX_DIR="${SCRIPT_DIR}/nginx"
-
   # Set default values
   declare -xg _do_first_time_bring_up_flag="false"
   declare -xg _do_enable_ssl_after_first_time_bring_up_flag="false"
+  declare -xg force="false"
 
   # Parse options
   while (($#)); do
     case "${1}" in
+    --force)
+      force="true"
+      ;;
     install_dependencies)
       info "Running install_dependencies ..."
       install_dependencies
@@ -102,11 +105,11 @@ __script_parse_opts() { # Optional
       ;;
     wp_setup)
       info "Running wp_setup ..."
-      env -i bash --posix -c "${SCRIPT_DIR}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
+      env -i bash --posix -c "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
       exit 0
       ;;
     nuke)
-      source "${SCRIPT_DIR}/admin/webserver/nuke.sh"
+      source "${WORKSPACE}/admin/webserver/nuke.sh"
       __nuke
       exit 1
       ;;
@@ -136,9 +139,18 @@ __script_parse_opts() { # Optional
 #       This stage is useful for ensuring build tools are present, and ensuring
 #       the necessary environment variables are set.
 __script_init() { # Optional
-  if [ "${_do_first_time_bring_up_flag}" = "true" ] ||
-    [ "${_do_enable_ssl_after_first_time_bring_up_flag}" = "true" ]; then
-    info "Initializing $0 ..."
+  if [ "${_do_first_time_bring_up_flag}" = "true" ]; then
+    if [ "${force}" = "true" ]; then
+      info "Force running first_time_bring_up..."
+      rm -rf "${WORKSPACE}/.first_time_bring_up_complete"
+    fi
+  fi
+
+  if [ "${_do_enable_ssl_after_first_time_bring_up_flag}" = "true" ]; then
+    if [ "${force}" = "true" ]; then
+      info "Force running enable_ssl_after_first_time_bring_up..."
+      rm -rf "${WORKSPACE}/.enable_ssl_after_first_time_bring_up_complete"
+    fi
   fi
 }
 
@@ -154,8 +166,8 @@ __script_exec() { # Required
   fi
 
   if [ "${_do_enable_ssl_after_first_time_bring_up_flag}" = "true" ]; then
-    info "Running enable_ssl_after_first_time_bring_up_flag ..."
-    enable_ssl_after_first_time_bring_up_flag
+    info "Running enable_ssl_after_first_time_bring_up ..."
+    enable_ssl_after_first_time_bring_up
   fi
 
   # NOTE: This is where you would add any other functions to run
@@ -223,31 +235,42 @@ install_dependencies() {
 first_time_bring_up() {
   info "First time bring up"
 
-  if [ -e "${SCRIPT_DIR}/.first_time_bring_up_complete" ]; then
-    warn "Detected server first time bring up process completed, don't need to run this process again"
+  if [ -e "${WORKSPACE}/.first_time_bring_up_complete" ]; then
+    warning "Detected server first time bring up process completed, don't need to run this process again"
     return
   fi
 
   # pull in the variables from the .env file
-  . "${SCRIPT_DIR}/.env"
+  . "${WS_ENV_FILE}"
 
-  # # disable any local MySQL instances to perform next tasks
-  # sudo systemctl stop mysql &>/dev/null || true
-  # sudo systemctl disable mysql &>/dev/null || true
+  # info "Disable local MySQL instances to perform next tasks (if any installed via apt-get)?"
+  # if confirm; then
+  sudo systemctl stop mysql &>/dev/null || true
+  sudo systemctl disable mysql &>/dev/null || true
+  # fi
 
   info "Changing the Certbot staging flag here if we are ready i.e. getting TEST certs for SSL certs docker-compose.yml..."
-  sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--staging/' "${SCRIPT_DIR}/.env"
+  sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--staging/' "${WS_ENV_FILE}"
 
   # Ensure the necessary dependencies are installed
   install_dependencies
 
   # set the default nginx template to the no ssl template for first time bring up for certbot pull just certs
-  rm -f "${NGINX_DIR}/templates/default.conf.template"
-  cp -f "${NGINX_DIR}/templates/default.nginx.conf.no.ssl.template" "${NGINX_DIR}/templates/default.conf.template"
+  rm -f "${WS_NGINX_DIR}/templates/default.conf.template"
+  cp -f "${WS_NGINX_DIR}/templates/default.nginx.conf.no.ssl.template" "${WS_NGINX_DIR}/templates/default.conf.template"
 
   docker compose up -d
 
-  info "Waiting for server to start up. It will take about ~2-3 minutes..."
+  # wait for db to become available
+  info "Waiting for your database to become available (this may take a few minutes)"
+  info "If this take too much time you may need to cancel over +5 min then, press Ctrl+C."
+  while ! mysqladmin ping -h "${DOMAIN_NAME}" -P "${DATABASE_PORT}" --silent; do
+    printf .
+    sleep 2
+  done
+
+  # FIXME: TODO: See if I can find something more official to find in the console logs to parse instead
+  info "Waiting for server to start up and stabilize. It will take about ~2-3 minutes..."
   countdown "00:02:30"
 
   docker ps
@@ -262,22 +285,22 @@ first_time_bring_up() {
   done
 
   # Check if wordpress files were created
-  [ -e "${SCRIPT_DIR}/src" ] ||
+  [ -e "${WORKSPACE}/src" ] ||
     error "Wordpress files not found. Did server appeared to fail to complete successfully"
 
   # Create a file to indicate first time bring up is complete and avoid
   # running this function again
-  touch "${SCRIPT_DIR}"/.first_time_bring_up_complete
+  touch "${WORKSPACE}"/.first_time_bring_up_complete
   info "First time bring up complete"
 }
 
-# enable_ssl_after_first_time_bring_up_flag
+# enable_ssl_after_first_time_bring_up
 #       This function will enable SSL on the server after the server has been brought up for the first time. It will
 #       create the necessary files and directories for the server to run properly. It will also create the necessary
 #       docker containers and volumes for the server to run properly. This function will also create a file to indicate
 #       the SSL is enabled complete and avoid running this function again in the future.
 # shellcheck disable=SC2120
-enable_ssl_after_first_time_bring_up_flag() {
+enable_ssl_after_first_time_bring_up() {
   local WEB_SERVICE_NAME="${1:-webserver}"
   local CERT_SERVICE_NAME="${2:-certbot}"
   info "Add and Enable SSL in ${WEB_SERVICE_NAME} in configuration"
@@ -293,11 +316,11 @@ enable_ssl_after_first_time_bring_up_flag() {
   fi
 
   # pull in the variables from the .env file
-  . "${SCRIPT_DIR}/.env"
+  . "${WS_ENV_FILE}"
 
   # Set the flag to force renewal of the certbot certs to get PROD certs
   info "Changing the Certbot staging flag here to get PROD SSL certs docker-compose.yml..."
-  sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--force-renewal/' "${SCRIPT_DIR}/.env"
+  sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--force-renewal/' "${WS_ENV_FILE}"
 
   info "Checking if domain directory exists, then checking if for certificates and key for SSL..."
   docker compose exec "${WEB_SERVICE_NAME}" ls -la /etc/letsencrypt/live
@@ -310,8 +333,8 @@ enable_ssl_after_first_time_bring_up_flag() {
   docker compose stop "${WEB_SERVICE_NAME}"
 
   info "Changing the service(${WEB_SERVICE_NAME}) configuration to use SSL certs..."
-  rm -f "${NGINX_DIR}/templates/default.conf.template"
-  cp -f "${NGINX_DIR}/templates/default.nginx.conf.with.ssl.template" "${NGINX_DIR}/templates/default.conf.template"
+  rm -f "${WS_NGINX_DIR}/templates/default.conf.template"
+  cp -f "${WS_NGINX_DIR}/templates/default.nginx.conf.with.ssl.template" "${WS_NGINX_DIR}/templates/default.conf.template"
 
   info "Recreating the service(${WEB_SERVICE_NAME}) with reloaded configuration ..."
   docker compose up -d --force-recreate --no-deps "${WEB_SERVICE_NAME}"
@@ -329,7 +352,7 @@ enable_ssl_after_first_time_bring_up_flag() {
 
 docker_compose_logs() {
   info "Getting logs from all containers created in docker-compose.yml..."
-  . "${SCRIPT_DIR}/.env"
+  . "${WS_ENV_FILE}"
   local compose_service
   for compose_service in $(yq '.services | keys[]' docker-compose.yml); do
     compose_service=${compose_service//\"/}

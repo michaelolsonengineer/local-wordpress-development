@@ -230,10 +230,12 @@ install_webapp_packages() {
     install_webapp_group=true
   fi
 
-  if ! is_installed "wp"; then
+  if [ ! -f "${TOOLS_COMMON_DIR}/../../admin/webserver/wp" ]; then
     echo "Sets up wordpress cli"
-    sudo wget https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -O /usr/bin/wp
-    sudo chmod +x /usr/bin/wp
+    wget https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -O "${TOOLS_COMMON_DIR}/../../admin/webserver/wp"
+    chmod +x "${TOOLS_COMMON_DIR}/../../admin/webserver/wp"
+    # sudo cp "${TOOLS_COMMON_DIR}/../../admin/webserver/wp" /usr/bin/wp
+    # sudo chown root:root /usr/bin/wp
   fi
 
   if [ "${install_webapp_group}" = true ]; then
@@ -252,9 +254,21 @@ install_miscellaneous_packages() {
   log INFO "Checking miscellaneous packages..."
   local install_miscellaneous_group=false
   local install_golang=""
+  local install_podman=""
+  local install_podman_compose_plugin=""
 
   if ! is_installed "golang"; then
     install_golang="golang"
+    install_miscellaneous_group=true
+  fi
+
+  if ! is_installed "podman"; then
+    install_podman="podman"
+    install_miscellaneous_group=true
+  fi
+
+  if ! is_installed "podman-compose"; then
+    install_podman_compose_plugin="podman-compose"
     install_miscellaneous_group=true
   fi
 
@@ -283,6 +297,8 @@ install_miscellaneous_packages() {
     log INFO "Installing miscellaneous packages"
     # shellcheck disable=SC2086
     sudo apt update && sudo apt install -y --no-install-recommends \
-      ${install_golang}
+      ${install_golang} \
+      ${install_podman} \
+      ${install_podman_compose_plugin}
   fi
 }
