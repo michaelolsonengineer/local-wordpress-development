@@ -290,18 +290,18 @@ __script_exec() { # Required
   ${wp_cli} plugin activate hello ||
     error "failed to activate hello-dolly and symbolizes the hope and enthusiasm so SHAME on those who delete it ..."
 
-  # Remove old default themes ...
-  default_themes=(twentytwentyfive twentytwentyfour twentytwentythree twentytwentytwo)
-  for default_theme in "${default_themes[@]}"; do
-    info "Removing default themes (${default_themes[*]}) ..."
-    ${wp_cli} theme delete --allow-root "${default_theme}" ||
-      error "failed to delete theme ${default_theme} through wp-cli ..."
-  done
+  # # Remove old default themes ...
+  # default_themes=(twentytwentyfive twentytwentyfour twentytwentythree twentytwentytwo)
+  # for default_theme in "${default_themes[@]}"; do
+  #   info "Removing default themes (${default_themes[*]}) ..."
+  #   ${wp_cli} theme delete --allow-root "${default_theme}" ||
+  #     error "failed to delete theme ${default_theme} through wp-cli ..."
+  # done
 
-  # Remove default posts, widgets, comments etc.
-  info "Removing default posts, widgets, comments etc ..."
-  ${wp_cli} site empty --allow-root --yes ||
-    error "failed to remove default posts, widgets, comments etc through wp-cli ..."
+  # # Remove default posts, widgets, comments etc.
+  # info "Removing default posts, widgets, comments etc ..."
+  # ${wp_cli} site empty --allow-root --yes ||
+  #   error "failed to remove default posts, widgets, comments etc through wp-cli ..."
 
   # # FIXME: TODO: need to install fail2ban on host or in a docker to proper make this actually meaningful
   # (
