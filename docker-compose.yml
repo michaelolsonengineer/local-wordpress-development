@@ -100,7 +100,7 @@ services:
         # See section using environment variables in nginx configuration (new in 1.19) on how to do so.
         environment:
             NGINX_HOST: ${DOMAIN_NAME}
-            WORDPRESS_HOST: ${CONTAINER_NAME}-wordpress
+            WORDPRESS_SERVICE: wordpress
         ports:
             - '80:80'
             - '443:443'

@@ -42,7 +42,9 @@ server {
   add_header X-XSS-Protection "1; mode=block" always;
   add_header X-Content-Type-Options "nosniff" always;
   add_header Referrer-Policy "no-referrer-when-downgrade" always;
-  add_header Content-Security-Policy "default-src * data: 'unsafe-eval' 'unsafe-inline'" always;
+
+  # Uncomment to disable page builders in WordPress for extra security # after we have a theme and design to work with
+  # add_header Content-Security-Policy "default-src * data: 'unsafe-eval' 'unsafe-inline'" always;
 
   # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
   # enable strict transport security only if you understand the implications
@@ -50,11 +52,11 @@ server {
     try_files $uri $uri/ /index.php$is_args$args;
   }
 
-  # $WORDPRESS_HOST:9000 is the name of the wordpress service in the docker-compose.yml
+  # $WORDPRESS_SERVICE:9000 is the name of the wordpress service in the docker-compose.yml
   location ~ \.php$ {
     try_files $uri =404;
     fastcgi_split_path_info ^(.+\.php)(/.+)$;
-    fastcgi_pass $WORDPRESS_HOST:9000;
+    fastcgi_pass $WORDPRESS_SERVICE:9000;
     fastcgi_index index.php;
     include fastcgi_params;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
