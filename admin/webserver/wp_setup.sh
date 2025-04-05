@@ -254,6 +254,7 @@ __script_exec() { # Required
   set -x
   wp_cli="docker compose run --rm wordpress-cli"
 
+  info "Performing core setup ... Setting title, admin-user, url, etc ..."
   ${wp_cli} core install \
     --allow-root \
     --path="${WEBSERVER_ROOT}" \
@@ -267,8 +268,39 @@ __script_exec() { # Required
   # ${wp_cli} user create \
   #   "${WORDPRESS_ADMIN_USER}" "${WORDPRESS_ADMIN_EMAIL}" --role=administrator --user_pass="${WORDPRESS_ADMIN_PASSWORD}"
 
+  # Select the permalink structure for your website. Including the %postname% tag makes links easy to understand,
+  # and can help your posts rank higher in search engines.
+  info "Set the permalink structure for your website. ..."
   ${wp_cli} option update permalink_structure "/%postname%/" --skip-themes --skip-plugins ||
     error "failed to install set permalink structure through wp-cli ..."
+
+  info "Set default timezone, timeformat, start of the week information ..."
+  ${wp_cli} option update timezone_string "America/Detroit" ||
+    error "failed to setup timezone to Detroit through wp-cli ..."
+  ${wp_cli} option update time_format "g:i A" ||
+    error "failed to setup time format to look like \"2:15 PM\" through wp-cli ..."
+  ${wp_cli} option update start_of_week 0 ||
+    error "failed to set start of the week to be Sunday through wp-cli ..."
+
+  info "Activating Hello-Dolly. It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
+  info "Hello, Dolly. When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
+  info "And if you want to remove it, SHAME on you ..."
+  ${wp_cli} plugin activate hello ||
+    error "failed to activate hello-dolly and symbolizes the hope and enthusiasm so SHAME on those who delete it ..."
+
+  # Remove old default themes
+  info "Removing default themes (twentyfifteen, twentythirteen, twentyfourteen) ..."
+  ${wp_cli} theme delete twentyfifteen ||
+    error "failed to delete theme twentyfifteen through wp-cli ..."
+  ${wp_cli} theme delete twentythirteen ||
+    error "failed to delete theme twentythirteen through wp-cli ..."
+  ${wp_cli} theme delete twentyfourteen ||
+    error "failed to delete theme twentyfourteen through wp-cli ..."
+
+  # Remove default posts, widgets, comments etc.
+  info "Removing default posts, widgets, comments etc ..."
+  ${wp_cli} site empty --yes ||
+    error "failed to remove default posts, widgets, comments etc through wp-cli ..."
 
   # # FIXME: TODO: need to install fail2ban on host or in a docker to proper make this actually meaningful
   # (

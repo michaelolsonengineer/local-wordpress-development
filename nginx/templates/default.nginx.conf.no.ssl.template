@@ -2,7 +2,7 @@ server {
   listen 80;
   listen [::]:80;
 
-  server_name $API_HOST www.$API_HOST;
+  server_name $NGINX_HOST www.$NGINX_HOST;
 
   index index.php index.html index.htm;
 
@@ -20,7 +20,7 @@ server {
   location ~ \.php$ {
     try_files $uri =404;
     fastcgi_split_path_info ^(.+\.php)(/.+)$;
-    fastcgi_pass wordpress:9000;
+    fastcgi_pass $WORDPRESS_HOST:9000;
     fastcgi_index index.php;
     include fastcgi_params;
     fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;

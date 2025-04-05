@@ -254,9 +254,21 @@ install_miscellaneous_packages() {
   log INFO "Checking miscellaneous packages..."
   local install_miscellaneous_group=false
   local install_golang=""
+  local install_podman=""
+  local install_podman_compose_plugin=""
 
   if ! is_installed "golang"; then
     install_golang="golang"
+    install_miscellaneous_group=true
+  fi
+
+  if ! is_installed "podman"; then
+    install_podman="podman"
+    install_miscellaneous_group=true
+  fi
+
+  if ! is_installed "podman-compose"; then
+    install_podman_compose_plugin="podman-compose"
     install_miscellaneous_group=true
   fi
 
@@ -285,6 +297,8 @@ install_miscellaneous_packages() {
     log INFO "Installing miscellaneous packages"
     # shellcheck disable=SC2086
     sudo apt update && sudo apt install -y --no-install-recommends \
-      ${install_golang}
+      ${install_golang} \
+      ${install_podman} \
+      ${install_podman_compose_plugin}
   fi
 }
