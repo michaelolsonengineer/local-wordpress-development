@@ -230,10 +230,12 @@ install_webapp_packages() {
     install_webapp_group=true
   fi
 
-  if ! is_installed "wp"; then
+  if [ ! -f "${TOOLS_COMMON_DIR}/../../admin/webserver/wp" ]; then
     echo "Sets up wordpress cli"
-    sudo wget https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -O /usr/bin/wp
-    sudo chmod +x /usr/bin/wp
+    wget https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -O "${TOOLS_COMMON_DIR}/../../admin/webserver/wp"
+    chmod +x "${TOOLS_COMMON_DIR}/../../admin/webserver/wp"
+    # sudo cp "${TOOLS_COMMON_DIR}/../../admin/webserver/wp" /usr/bin/wp
+    # sudo chown root:root /usr/bin/wp
   fi
 
   if [ "${install_webapp_group}" = true ]; then
