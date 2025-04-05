@@ -230,6 +230,8 @@ __script_init() { # Optional
 #       boilerplate for error handling.
 __script_exec() { # Required
   local wp_cli
+  local default_theme
+  local default_themes
 
   # FIXME: this need to be done differently with a script I think
   # follow instructions on https://www.digitalocean.com/community/tutorials/how-to-install-wordpress-with-docker-compose
@@ -283,23 +285,22 @@ __script_exec() { # Required
     error "failed to set start of the week to be Sunday through wp-cli ..."
 
   info "Activating Hello-Dolly. It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
-  info "Hello, Dolly. When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
+  info "\"Hello, Dolly\". When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
   info "And if you want to remove it, SHAME on you ..."
   ${wp_cli} plugin activate hello ||
     error "failed to activate hello-dolly and symbolizes the hope and enthusiasm so SHAME on those who delete it ..."
 
-  # Remove old default themes
-  info "Removing default themes (twentyfifteen, twentythirteen, twentyfourteen) ..."
-  ${wp_cli} theme delete twentyfifteen ||
-    error "failed to delete theme twentyfifteen through wp-cli ..."
-  ${wp_cli} theme delete twentythirteen ||
-    error "failed to delete theme twentythirteen through wp-cli ..."
-  ${wp_cli} theme delete twentyfourteen ||
-    error "failed to delete theme twentyfourteen through wp-cli ..."
+  # Remove old default themes ...
+  default_themes=(twentytwentyfive twentytwentyfour twentytwentythree twentytwentytwo)
+  for default_theme in "${default_themes[@]}"; do
+    info "Removing default themes (${default_themes[*]}) ..."
+    ${wp_cli} theme delete --allow-root "${default_theme}" ||
+      error "failed to delete theme ${default_theme} through wp-cli ..."
+  done
 
   # Remove default posts, widgets, comments etc.
   info "Removing default posts, widgets, comments etc ..."
-  ${wp_cli} site empty --yes ||
+  ${wp_cli} site empty --allow-root --yes ||
     error "failed to remove default posts, widgets, comments etc through wp-cli ..."
 
   # # FIXME: TODO: need to install fail2ban on host or in a docker to proper make this actually meaningful
