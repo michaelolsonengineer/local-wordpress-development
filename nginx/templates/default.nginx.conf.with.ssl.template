@@ -52,7 +52,7 @@ server {
     try_files $uri $uri/ /index.php$is_args$args;
   }
 
-  # $WORDPRESS_HOST:9000 is the name of the wordpress service in the docker-compose.yml
+  # $WORDPRESS_HOST:9000 is the name of the wordpress host in the docker-compose.yml
   location ~ \.php$ {
     try_files $uri =404;
     fastcgi_split_path_info ^(.+\.php)(/.+)$;
