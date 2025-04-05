@@ -57,8 +57,6 @@ services:
             WORDPRESS_DB_NAME: '${DATABASE_NAME}'
             WORDPRESS_DB_USER: '${DATABASE_USER}'
             WORDPRESS_DB_PASSWORD: '${DATABASE_PASSWORD}'
-        extra_hosts:
-            - 'host.docker.internal:host-gateway'
         volumes:
             # - type: volume
             #   source: wordpress_volume
@@ -66,6 +64,8 @@ services:
             #   read_only: false
             - wordpress_volume:/var/www/html
             - ./src:/var/www/html/wp-content:rw
+        expose:
+            - '9000' # expose port 9000 to the webserver for fastcgi
         networks:
             - app-network
 
@@ -100,11 +100,10 @@ services:
         # See section using environment variables in nginx configuration (new in 1.19) on how to do so.
         environment:
             NGINX_HOST: ${DOMAIN_NAME}
-            WORDPRESS_SERVICE: wordpress
+            WORDPRESS_HOST: ${CONTAINER_NAME}-wordpress
         ports:
             - '80:80'
             - '443:443'
-            - '9000:9000' # for fastcgi
         volumes:
             - wordpress_volume:/var/www/html
             - ./nginx/usr/bin/wp:/usr/bin/wp
