@@ -55,7 +55,12 @@ __script_help() { # Required
             This flag is used to indicate that the server has already been brought up and the script should run the necessary steps
             to enable SSL on the server. This will create a file to indicate the SSL is enabled complete and avoid running
             the steps in this function again in the future.
-
+        wp-setup:
+            This flag is used to indicate that the script should run the necessary steps to setup the Wordpress server. This will
+            create a file to indicate the Wordpress server is setup complete and avoid running the steps in this function again in
+            the future.
+        logs:
+            Print the logs from all containers created in docker-compose.yml
         nuke:
             nuke. Don't use this unless you are sure
     args:
@@ -103,8 +108,8 @@ __script_parse_opts() { # Optional
       _do_first_time_bring_up_flag="true"
       _do_enable_ssl_after_first_time_bring_up_flag="true"
       ;;
-    wp_setup)
-      info "Running wp_setup ..."
+    wp-setup)
+      info "Running wp-setup ..."
       env -i bash --posix -c "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
       exit 0
       ;;
