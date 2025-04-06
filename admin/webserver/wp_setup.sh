@@ -284,9 +284,14 @@ __script_exec() { # Required
   ${wp_cli} option update start_of_week 0 ||
     error "failed to set start of the week to be Sunday through wp-cli ..."
 
-  info "Activating Hello-Dolly. It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
+  info "Activating Askismet (preinstalled as with default wordpress installation). ..."
+  ${wp_cli} plugin activate askismet ||
+    error "failed to activate askismet through wp-cli..."
+
+  info "Activating Hello-Dolly (preinstalled as with default wordpress installation)."
+  info "It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
   info "\"Hello, Dolly\". When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
-  info "And if you want to remove it, SHAME on you ..."
+  info "${STYLE_RESET}${RED}And if you want to remove it, ${BOLD}SHAME${STYLE_RESET}${RED} on you and your forefathers ..."
   ${wp_cli} plugin activate hello ||
     error "failed to activate hello-dolly and symbolizes the hope and enthusiasm so SHAME on those who delete it ..."
 
