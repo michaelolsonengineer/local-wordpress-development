@@ -91,7 +91,7 @@ __script_parse_opts() { # Optional
       ;;
     install_dependencies)
       info "Running install_dependencies ..."
-      install_dependencies
+      install_dependencies --developer-tools
       exit 0
       ;;
     logs)
@@ -223,11 +223,14 @@ __script_cleanup() {
 #       dependencies are not installed/missing.
 install_dependencies() {
   info "Checking/Installing dependencies ..."
+  local options=$@
   source "${SCRIPT_DIR}/tools/common/dependencies.sh"
   install_basic_packages
   install_webapp_packages
   setup_docker
-  # install_miscellaneous_packages # NOTE: This has not been tested yet
+  if is_item_in_list $options "--developer-tools"; then
+    install_developer_tools_packages
+  fi
 }
 
 # first_time_bring_up

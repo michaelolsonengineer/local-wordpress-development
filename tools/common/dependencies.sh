@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2086
 
 # set -e: Exit on error
 # set -u: Throw error if undefined variable used
@@ -98,7 +99,7 @@ install_docker_dependencies() {
 
   if [ "$install_dependencies_group" = true ]; then
     log INFO "Installing necessary Docker dependency packages"
-    # shellcheck disable=SC2086
+
     sudo apt update && sudo apt install -y --no-install-recommends \
       ${install_apt_transport_https} \
       ${install_ca_certificates} \
@@ -195,7 +196,7 @@ install_docker() {
 
   if [ "${install_docker_group}" = true ]; then
     log INFO "Installing necessary Docker packages"
-    # shellcheck disable=SC2086
+
     sudo apt update && sudo apt install -y --no-install-recommends \
       ${install_docker_ce} \
       ${install_docker_ce_cli} \
@@ -238,36 +239,36 @@ install_webapp_packages() {
 
   if [ "${install_webapp_group}" = true ]; then
     log INFO "Installing necessary Webapp packages"
-    # shellcheck disable=SC2086
+
     sudo apt update && sudo apt install -y --no-install-recommends \
       ${install_mysql_client} \
       ${install_certbot}
   fi
 }
 
-# Ensure miscellaneous (dev/networking tools) packages are installed
+# Ensure developer_tools (dev/networking tools) packages are installed
 #   golang: Go programming language
-# Usage: install_miscellaneous_packages
-install_miscellaneous_packages() {
-  log INFO "Checking miscellaneous packages..."
-  local install_miscellaneous_group=false
+# Usage: install_developer_tools_packages
+install_developer_tools_packages() {
+  log INFO "Checking developer_tools packages..."
+  local install_developer_tools_group=false
   local install_golang=""
   local install_podman=""
   local install_podman_compose_plugin=""
 
   if ! is_installed "golang"; then
     install_golang="golang"
-    install_miscellaneous_group=true
+    install_developer_tools_group=true
   fi
 
   if ! is_installed "podman"; then
     install_podman="podman"
-    install_miscellaneous_group=true
+    install_developer_tools_group=true
   fi
 
   if ! is_installed "podman-compose"; then
     install_podman_compose_plugin="podman-compose"
-    install_miscellaneous_group=true
+    install_developer_tools_group=true
   fi
 
   # netcat-traditional
@@ -291,9 +292,9 @@ install_miscellaneous_packages() {
   # less
   # html2text
 
-  if [ "${install_miscellaneous_group}" = true ]; then
-    log INFO "Installing miscellaneous packages"
-    # shellcheck disable=SC2086
+  if [ "${install_developer_tools_group}" = true ]; then
+    log INFO "Installing developer_tools packages"
+
     sudo apt update && sudo apt install -y --no-install-recommends \
       ${install_golang} \
       ${install_podman} \
