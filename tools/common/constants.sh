@@ -1,11 +1,9 @@
 #!/bin/bash
 # shellcheck disable=SC2155
 
-# Exit on error
-set -e
-
-# Throw error if undefined variable used
-set -u
+# set -e: Exit on error
+# set -u: Throw error if undefined variable used
+set -e -u
 
 declare -xg TOOLS_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

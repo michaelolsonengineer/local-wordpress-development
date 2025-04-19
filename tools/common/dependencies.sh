@@ -1,10 +1,8 @@
 #!/bin/bash
 
-# Exit on error
-set -e
-
-# Throw error if undefined variable used
-set -u
+# set -e: Exit on error
+# set -u: Throw error if undefined variable used
+set -e -u
 
 source "${TOOLS_COMMON_DIR:-.}/constants.sh"
 #------------------------------------------------------------------------------

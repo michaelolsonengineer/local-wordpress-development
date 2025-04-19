@@ -11,11 +11,9 @@
 # and adapted original bash template script from Kyle Smith
 #
 
-# Exit on error
-set -e
-
-# Throw error if undefined variable used
-set -u
+# set -e: Exit on error
+# set -u: Throw error if undefined variable used
+set -e -u
 
 if [ -z "${TOOLS_COMMON_DIR-}" ]; then
   # shellcheck disable=SC2155
@@ -270,6 +268,11 @@ __script_exec() { # Required
   # ${wp_cli} user create \
   #   "${WORDPRESS_ADMIN_USER}" "${WORDPRESS_ADMIN_EMAIL}" --role=administrator --user_pass="${WORDPRESS_ADMIN_PASSWORD}"
 
+  # # Remove default posts, widgets, comments etc.
+  # info "Removing default posts, widgets, comments etc ..."
+  # ${wp_cli} site empty --allow-root --yes ||
+  #   error "failed to remove default posts, widgets, comments etc through wp-cli ..."
+
   # Select the permalink structure for your website. Including the %postname% tag makes links easy to understand,
   # and can help your posts rank higher in search engines.
   info "Set the permalink structure for your website. ..."
@@ -284,9 +287,14 @@ __script_exec() { # Required
   ${wp_cli} option update start_of_week 0 ||
     error "failed to set start of the week to be Sunday through wp-cli ..."
 
-  info "Activating Hello-Dolly. It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
+  info "Activating Askismet (preinstalled as with default wordpress installation). ..."
+  ${wp_cli} plugin activate askismet ||
+    error "failed to activate askismet through wp-cli..."
+
+  info "Activating Hello-Dolly (preinstalled as with default wordpress installation)."
+  info "It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
   info "\"Hello, Dolly\". When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
-  info "And if you want to remove it, SHAME on you ..."
+  info "${STYLE_RESET}${RED}And if you want to remove it, ${BOLD}SHAME${STYLE_RESET}${RED} on you and your forefathers ..."
   ${wp_cli} plugin activate hello ||
     error "failed to activate hello-dolly and symbolizes the hope and enthusiasm so SHAME on those who delete it ..."
 
@@ -297,11 +305,6 @@ __script_exec() { # Required
   #   ${wp_cli} theme delete --allow-root "${default_theme}" ||
   #     error "failed to delete theme ${default_theme} through wp-cli ..."
   # done
-
-  # # Remove default posts, widgets, comments etc.
-  # info "Removing default posts, widgets, comments etc ..."
-  # ${wp_cli} site empty --allow-root --yes ||
-  #   error "failed to remove default posts, widgets, comments etc through wp-cli ..."
 
   # # FIXME: TODO: need to install fail2ban on host or in a docker to proper make this actually meaningful
   # (
