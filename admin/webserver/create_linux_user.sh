@@ -1,10 +1,8 @@
 #!/bin/bash
 
-# Exit on error
-set -e
-
-# Throw error if undefined variable used
-set -u
+# set -e: Exit on error
+# set -u: Throw error if undefined variable used
+set -e -u
 
 ##########################################################
 # Adapted original bash template script from Kyle Smith
@@ -174,27 +172,51 @@ __script_exec() { # Required
         error "User ${NEW_USER} already exists."
         return 1
     else
-        useradd \
-            --no-log-init \
-            --home-dir "${NEW_HOME}" \
-            --create-home \
-            --shell "${NEW_SHELL}" \
-            "${NEW_USER}"
+        # run add user non-interactively
+        adduser --gecos "" --disabled-password "${NEW_USER}"
     fi
 
     # Set Password
-    echo "${NEW_USER}:${NEW_PASSWORD}" | chpasswd
+    chpasswd <<<"${NEW_USER}:${NEW_PASSWORD}"
 
     if [ "${MAKE_SUPER_USER}" = "true" ]; then
         usermod -aG sudo "${NEW_USER}"
     fi
 
-    # Fix sudo for users on shell
+    # Fix sudo for users on shell if developer and not production
     if [ "${DISABLE_PASSWORD_FOR_NEW_USER}" = "true" ]; then
         echo "${NEW_USER} ALL=(ALL) NOPASSWD:ALL" >>/etc/sudoers &&
-            echo "%sudo ALL=(ALL:ALL) NOPASSWD:ALL" >>/etc/sudoers &&
             touch "${NEW_HOME}/.sudo_as_admin_successful"
     fi
+
+    # Setup the ssh key.
+    while true; do
+        echo -en "\n"
+        info "Setup the ssh key."
+        info "See https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent"
+        info "on how to generate a new ssh key and add it to the ssh agent if unfamiliar or copy your already created ssh keys from local machine."
+        read -rp "Add SSH public key from your local machine you are connecting from:" ssh_key
+        info "SSH Key= ${ssh_key}"
+        read -rp "Is the SSH key correct? [Y/n] " confirmation
+        confirmation=${confirmation,,}
+        if [[ "${confirmation}" =~ ^(yes|y)$ ]] || [ -z "${confirmation}" ]; then
+            break
+        else
+            unset ssh_key
+        fi
+    done
+
+    # Create the .ssh directory if it doesn't exist
+    if [ ! -d "/home/${NEW_USER}/.ssh" ]; then
+        mkdir -p "/home/${NEW_USER}/.ssh"
+    fi
+
+    # Add the SSH key to the authorized_keys file
+    echo "${ssh_key}" >>"/home/${NEW_USER}/.ssh/authorized_keys"
+
+    # Set the correct permissions for the .ssh directory and authorized_keys file
+    chmod 700 "/home/${NEW_USER}/.ssh/authorized_keys"
+    chown -R "${NEW_USER}:${NEW_USER}" "/home/${NEW_USER}/.ssh/authorized_keys"
 }
 
 # __script_succeed (optional)

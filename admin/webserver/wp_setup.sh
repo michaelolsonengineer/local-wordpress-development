@@ -11,11 +11,9 @@
 # and adapted original bash template script from Kyle Smith
 #
 
-# Exit on error
-set -e
-
-# Throw error if undefined variable used
-set -u
+# set -e: Exit on error
+# set -u: Throw error if undefined variable used
+set -e -u
 
 if [ -z "${TOOLS_COMMON_DIR-}" ]; then
   # shellcheck disable=SC2155
@@ -270,6 +268,11 @@ __script_exec() { # Required
   # ${wp_cli} user create \
   #   "${WORDPRESS_ADMIN_USER}" "${WORDPRESS_ADMIN_EMAIL}" --role=administrator --user_pass="${WORDPRESS_ADMIN_PASSWORD}"
 
+  # # Remove default posts, widgets, comments etc.
+  # info "Removing default posts, widgets, comments etc ..."
+  # ${wp_cli} site empty --allow-root --yes ||
+  #   error "failed to remove default posts, widgets, comments etc through wp-cli ..."
+
   # Select the permalink structure for your website. Including the %postname% tag makes links easy to understand,
   # and can help your posts rank higher in search engines.
   info "Set the permalink structure for your website. ..."
@@ -302,11 +305,6 @@ __script_exec() { # Required
   #   ${wp_cli} theme delete --allow-root "${default_theme}" ||
   #     error "failed to delete theme ${default_theme} through wp-cli ..."
   # done
-
-  # # Remove default posts, widgets, comments etc.
-  # info "Removing default posts, widgets, comments etc ..."
-  # ${wp_cli} site empty --allow-root --yes ||
-  #   error "failed to remove default posts, widgets, comments etc through wp-cli ..."
 
   # # FIXME: TODO: need to install fail2ban on host or in a docker to proper make this actually meaningful
   # (

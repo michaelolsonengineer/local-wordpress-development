@@ -6,11 +6,9 @@
 #       Adapted original bash template script from Kyle Smith
 #
 
-# Exit on error
-set -e
-
-# Throw error if undefined variable used
-set -u
+# set -e: Exit on error
+# set -u: Throw error if undefined variable used
+set -e -u
 
 # shellcheck disable=SC2155
 declare -xg SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
