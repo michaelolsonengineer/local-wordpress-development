@@ -40,6 +40,11 @@ __nuke() {
       sudo rm -rf "${SCRIPT_DIR}/src"
     fi
 
+    rm -f "${SCRIPT_DIR}/.first_time_bring_up_complete" ||
+      log INFO "No ${SCRIPT_DIR}/.first_time_bring_up_complete file to remove"
+    rm -f "${SCRIPT_DIR}/.enable_ssl_after_first_time_bring_up_complete" ||
+      log INFO "No ${SCRIPT_DIR}/.enable_ssl_after_first_time_bring_up_complete file to remove"
+
     log WARN "Deleting ALL stopped volumes defined in docker-compose.yml..."
     local compose_volume
     for compose_volume in $(yq '.volumes | keys[]' docker-compose.yml); do

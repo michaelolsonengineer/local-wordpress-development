@@ -106,7 +106,6 @@ services:
             - '443:443'
         volumes:
             - wordpress_volume:/var/www/html
-            - ./nginx/usr/bin/wp:/usr/bin/wp
             - ./nginx/templates:/etc/nginx/templates
             - ./nginx/nginx-conf:/etc/nginx/conf.d
             - certbot-etc_volume:/etc/letsencrypt
