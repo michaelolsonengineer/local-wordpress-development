@@ -216,16 +216,31 @@ install_docker() {
 install_webapp_packages() {
   log INFO "Checking webapp packages..."
   local install_webapp_group=false
-  local install_mysql_client=""
   local install_certbot=""
-
-  if ! is_installed "mysqladmin"; then
-    local install_mysql_client="mysql-client"
-    install_webapp_group=true
-  fi
+  local install_fail2ban=""
+  local install_mysql_client=""
 
   if ! is_installed "certbot"; then
     install_certbot="certbot"
+    install_webapp_group=true
+  fi
+
+  # Not strictly necessary, but recommended for security and it will need to be configured
+  # if you are using a web server (nginx/apache) to serve your webapp which is harder for the
+  # container setup so this is a TODO for later
+  # fail2ban: scans log files and bans IP addresses that show malicious signs
+  # such as too many password failures, seeking for exploits, etc.
+  # https://www.fail2ban.org/wiki/index.php/Main_Page
+  # https://www.fail2ban.org/wiki/index.php/HowItWorks
+  # https://www.fail2ban.org/wiki/index.php/Configuration
+  # https://www.fail2ban.org/wiki/index.php/Fail2Ban_Quick_Start
+  if ! is_installed "fail2ban"; then
+    install_fail2ban="fail2ban"
+    install_webapp_group=true
+  fi
+
+  if ! is_installed "mysqladmin"; then
+    local install_mysql_client="mysql-client"
     install_webapp_group=true
   fi
 
@@ -241,8 +256,9 @@ install_webapp_packages() {
     log INFO "Installing necessary Webapp packages"
 
     sudo apt update && sudo apt install -y --no-install-recommends \
-      ${install_mysql_client} \
-      ${install_certbot}
+      ${install_certbot} \
+      ${install_fail2ban} \
+      ${install_mysql_client}
   fi
 }
 

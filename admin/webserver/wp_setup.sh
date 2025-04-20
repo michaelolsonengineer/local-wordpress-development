@@ -107,6 +107,7 @@ __script_init() { # Optional
   local built_cmd
   local exec_cmd
   local database_docker_ip
+  local is_mysql_client_ssl_defined
   local sideload_wordpress_setup_script="help_wp_setup.sh"
 
   echo "This script will adjust the WordPress installation into"
@@ -149,12 +150,13 @@ __script_init() { # Optional
 
     # add required SSL flag
     if [ -e "${WORKSPACE}/.enable_ssl_after_first_time_bring_up_complete" ]; then
-      if ! grep -q "MYSQLI_CLIENT_SSL" "${WEBSERVER_ROOT}/wp-config.php"; then
+      is_mysql_client_ssl_defined=$(docker compose exec -it wordpress sh -c "grep -q 'MYSQLI_CLIENT_SSL' \"${WEBSERVER_ROOT}/wp-config.php\" && echo 'MYSQLI_CLIENT_SSL Defined'")
+      if [ "${is_mysql_client_ssl_defined}" = 'MYSQLI_CLIENT_SSL Defined' ]; then
+        info "MYSQLI_CLIENT_SSL is already defined in ${WEBSERVER_ROOT}/wp-config.php"
+      else
         # add required SSL flag
         echo "echo \"/** Connect to MySQL cluster over SSL **/\" >>${WEBSERVER_ROOT}/wp-config.php" >>"${temp_dir}/${sideload_wordpress_setup_script}"
         echo "echo \"define( 'MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL );\" >>${WEBSERVER_ROOT}/wp-config.php" >>"${temp_dir}/${sideload_wordpress_setup_script}"
-      else
-        info "MYSQLI_CLIENT_SSL is already defined in ${WEBSERVER_ROOT}/wp-config.php"
       fi
     fi
 
@@ -227,6 +229,10 @@ __script_init() { # Optional
 #       architecture enforces good script writing practices and reduces script
 #       boilerplate for error handling.
 __script_exec() { # Required
+  local wordpress_service_name="${1:-wordpress}"
+  local wordpress_cli_service_name="${2:-wordpress-cli}"
+  local webserver_service_name="${3:-webserver}"
+  local wordpress_shell
   local wp_cli
   local default_theme
   local default_themes
@@ -252,14 +258,17 @@ __script_exec() { # Required
 
   # echo the command to the user
   set -x
-  wp_cli="docker compose run --rm wordpress-cli"
+  wp_cli="docker compose run --rm ${wordpress_cli_service_name} wp"
+  wordpress_shell="docker compose exec -it ${wordpress_service_name} sh -c"
 
   info "Performing core setup ... Setting title, admin-user, url, etc ..."
+  warning "Skipping email since we don't have email setup yet on docker containers ..."
   ${wp_cli} core install \
     --allow-root \
     --path="${WEBSERVER_ROOT}" \
     --title="${wordpress_blog_title}" \
     --url="${DOMAIN_NAME}" \
+    --skip-email \
     --admin_email="${WORDPRESS_ADMIN_EMAIL}" \
     --admin_password="${WORDPRESS_ADMIN_PASSWORD}" \
     --admin_user="${WORDPRESS_ADMIN_USER}"
@@ -268,10 +277,17 @@ __script_exec() { # Required
   # ${wp_cli} user create \
   #   "${WORDPRESS_ADMIN_USER}" "${WORDPRESS_ADMIN_EMAIL}" --role=administrator --user_pass="${WORDPRESS_ADMIN_PASSWORD}"
 
-  # # Remove default posts, widgets, comments etc.
-  # info "Removing default posts, widgets, comments etc ..."
-  # ${wp_cli} site empty --allow-root --yes ||
-  #   error "failed to remove default posts, widgets, comments etc through wp-cli ..."
+  # Remove default posts, widgets, comments etc.
+  info "Removing default posts, widgets, comments etc ..."
+  ${wp_cli} site empty --allow-root --yes ||
+    error "failed to remove default posts, widgets, comments etc through wp-cli ..."
+
+  info "Setting home for proper SEO ..."
+  ${wp_cli} option update home "https://${DOMAIN_NAME}" ||
+    error "failed to setup WordPress Address (URL) through wp-cli ..."
+  info "Setting siteurl for proper SEO ..."
+  ${wp_cli} option update siteurl "https://${DOMAIN_NAME}" ||
+    error "failed to setup Site Address (URL) through wp-cli ..."
 
   # Select the permalink structure for your website. Including the %postname% tag makes links easy to understand,
   # and can help your posts rank higher in search engines.
@@ -287,26 +303,45 @@ __script_exec() { # Required
   ${wp_cli} option update start_of_week 0 ||
     error "failed to set start of the week to be Sunday through wp-cli ..."
 
-  info "Activating Askismet (preinstalled as with default wordpress installation). ..."
-  ${wp_cli} plugin activate askismet ||
-    error "failed to activate askismet through wp-cli..."
+  # Remove old default themes ...
+  default_themes=(twentytwentyfive twentytwentyfour twentytwentythree twentytwentytwo)
+  for default_theme in "${default_themes[@]}"; do
+    info "Removing default themes (${default_themes[*]}) ..."
+    ${wp_cli} theme delete --allow-root "${default_theme}" ||
+      error "failed to delete theme ${default_theme} through wp-cli ..."
+  done
+  ${wordpress_shell} "rm -rf ${WEBSERVER_ROOT}/wp-content/themes/twentytwenty*" ||
+    error 'failed to remove twentytwenty* themes in wordpress docker ...'
 
-  info "Activating Hello-Dolly (preinstalled as with default wordpress installation)."
-  info "It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
-  info "\"Hello, Dolly\". When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
-  info "${STYLE_RESET}${RED}And if you want to remove it, ${BOLD}SHAME${STYLE_RESET}${RED} on you and your forefathers ..."
-  ${wp_cli} plugin activate hello ||
-    error "failed to activate hello-dolly and symbolizes the hope and enthusiasm so SHAME on those who delete it ..."
+  # FIXME: this is not working yet, need to figure out how to connect through docker container network
+  # The CLI does not work reliably for Installing/activating/enabling Plugins with the
+  # docker compose network for automation purposes
 
-  # # Remove old default themes ...
-  # default_themes=(twentytwentyfive twentytwentyfour twentytwentythree twentytwentytwo)
-  # for default_theme in "${default_themes[@]}"; do
-  #   info "Removing default themes (${default_themes[*]}) ..."
-  #   ${wp_cli} theme delete --allow-root "${default_theme}" ||
-  #     error "failed to delete theme ${default_theme} through wp-cli ..."
-  # done
+  # info "Activating Askismet (preinstalled as with default wordpress installation). ..."
+  # (
+  #   ${wp_cli} plugin activate askismet &&
+  #   ${wp_cli} plugin update askismet --allow-root --path="${WEBSERVER_ROOT}"
+  # ) ||
+  #   error "failed to activate askismet through wp-cli..."
 
-  # # FIXME: TODO: need to install fail2ban on host or in a docker to proper make this actually meaningful
+  # info "Activating Hello-Dolly (preinstalled as with default wordpress installation)."
+  # info "It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
+  # info "\"Hello, Dolly\". When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
+  # info "${STYLE_RESET}${RED}And if you want to remove it, ${BOLD}SHAME${STYLE_RESET}${RED} on you and your forefathers ..."
+  # ${wp_cli} plugin activate hello ||
+  #   error "failed to activate hello-dolly and symbolizes the hope and enthusiasm so SHAME on those who delete it ..."
+
+  # # Install and activate Astra theme
+  # info "Installing and activating Astra theme ..."
+  # (
+  #   ${wp_cli} plugin install astra --allow-root --path="${WEBSERVER_ROOT}" &&
+  #     docker cp "${wordpress_service_name}:${WEBSERVER_ROOT}/wp-content/themes/astra" "${webserver_service_name}:${WEBSERVER_ROOT}/wp-content/themes/astra"
+  #     ${wp_cli} plugin activate astra --allow-root --path="${WEBSERVER_ROOT}"
+  # ) || error "failed to install and activate astra through wp-cli ..."
+
+  # TODO NOTE: this is not working yet, need to figure out how to connect through docker container network
+  # Install and activate WP Fail2Ban plugin
+  # info "Installing and activating WP Fail2Ban plugin ..."
   # (
   #   ${wp_cli} plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}" &&
   #     ${wp_cli} plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
