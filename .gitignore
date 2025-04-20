@@ -3,6 +3,10 @@
 .enable_ssl_after_first_time_bring_up_complete
 .first_time_bring_up_complete
 
+# Ignore log files
+*.log
+/log/
+
 # These are generated files on the server, can't make this read-only on the docker, and but these should not be excluded from git
 nginx/nginx-conf/default*
 
