@@ -108,7 +108,7 @@ __script_parse_opts() { # Optional
       ;;
     wp-setup)
       info "Running wp-setup ..."
-      env -i bash --posix -c "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
+      bash "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
       exit 0
       ;;
     nuke)
@@ -255,44 +255,37 @@ first_time_bring_up() {
   sudo systemctl disable mysql &>/dev/null || true
   # fi
 
-  info "Changing the Certbot staging flag here if we are ready i.e. getting TEST certs for SSL certs docker-compose.yml..."
-  sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--staging/' "${WS_ENV_FILE}"
-
   # Ensure the necessary dependencies are installed
   install_dependencies
 
-  # set the default nginx template to the no ssl template for first time bring up for certbot pull just certs
-  rm -f "${WS_NGINX_DIR}/templates/default.conf.template"
-  cp -f "${WS_NGINX_DIR}/templates/default.nginx.conf.no.ssl.template" "${WS_NGINX_DIR}/templates/default.conf.template"
-
   docker compose up -d
 
-  # wait for db to become available
-  info "Waiting for your database to become available (this may take a few minutes)"
-  info "If this take too much time you may need to cancel over +5 min then, press Ctrl+C."
-  while ! mysqladmin ping -h "${DOMAIN_NAME}" -P "${DATABASE_PORT}" --silent; do
+  # Wait for WordPress container to finish its own init (copies files, generates wp-config.php).
+  # Docker healthcheck already ensured the DB is ready before wordpress started;
+  # we just need to wait for the wordpress entrypoint to finish writing wp-config.php.
+  info "Waiting for WordPress container to finish initialization (wp-config.php) ..."
+  local wp_timeout=180
+  local wp_elapsed=0
+  while ! docker compose exec -T wordpress test -f /var/www/html/wp-config.php 2>/dev/null; do
+    if [ ${wp_elapsed} -ge ${wp_timeout} ]; then
+      error "Timed out waiting for WordPress to initialize after ${wp_timeout}s. Check: docker compose logs wordpress"
+      exit 1
+    fi
     printf .
-    sleep 2
+    sleep 3
+    wp_elapsed=$((wp_elapsed + 3))
   done
+  echo  # newline after dots
 
-  # FIXME: TODO: See if I can find something more official to find in the console logs to parse instead
-  info "Waiting for server to start up and stabilize. It will take about ~2-3 minutes..."
-  countdown "00:02:30"
-
-  docker ps
-
-  info "Getting logs from all containers created in docker-compose.yml..."
-  local compose_service
-  for compose_service in $(yq '.services | keys[]' docker-compose.yml); do
-    compose_service=${compose_service//\"/}
-    local named_service=${CONTAINER_NAME}-${compose_service}
-    info "${named_service}: \"docker compose logs ${compose_service}\""
-    docker compose logs "${compose_service}"
-  done
+  docker compose ps
 
   # Check if wordpress files were created
   [ -e "${WORKSPACE}/src" ] ||
-    error "Wordpress files not found. Did server appeared to fail to complete successfully"
+    error "WordPress src bind-mount not found — did the volume fail to populate?"
+  info "All containers up. Run './wporchestrator logs' to inspect individual container output."
+
+  info "Running WordPress setup ..."
+  bash "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
 
   # Create a file to indicate first time bring up is complete and avoid
   # running this function again
@@ -324,26 +317,42 @@ enable_ssl_after_first_time_bring_up() {
   # pull in the variables from the .env file
   . "${WS_ENV_FILE}"
 
-  # Set the flag to force renewal of the certbot certs to get PROD certs
-  info "Changing the Certbot staging flag here to get PROD SSL certs docker-compose.yml..."
-  sed -i 's/CERTBOT_STAGING_FLAG=.*/CERTBOT_STAGING_FLAG=--force-renewal/' "${WS_ENV_FILE}"
+  # Validate that PRODUCTION_DOMAIN is set before touching anything
+  if [ -z "${PRODUCTION_DOMAIN:-}" ]; then
+    error "PRODUCTION_DOMAIN is not set in ${WS_ENV_FILE}. Set it to your registered public domain and retry."
+    exit 1
+  fi
 
-  info "Checking if domain directory exists, then checking if for certificates and key for SSL..."
-  docker compose exec "${WEB_SERVICE_NAME}" ls -la /etc/letsencrypt/live
-  docker compose exec "${WEB_SERVICE_NAME}" ls -la /etc/letsencrypt/live/"${DOMAIN_NAME}"
+  info "Switching DOMAIN_NAME → PRODUCTION_DOMAIN (${PRODUCTION_DOMAIN}) in .env ..."
+  sed -i "s|^DOMAIN_NAME=.*|DOMAIN_NAME=${PRODUCTION_DOMAIN}|" "${WS_ENV_FILE}"
 
-  info "Obtaining production certificates..."
-  docker compose up --force-recreate --no-deps "${CERT_SERVICE_NAME}"
+  info "Enabling SSL and clearing staging flag in .env ..."
+  sed -i 's|^ENABLE_SSL=.*|ENABLE_SSL=true|' "${WS_ENV_FILE}"
+  sed -i 's|^CERTBOT_STAGING_FLAG=.*|CERTBOT_STAGING_FLAG=|' "${WS_ENV_FILE}"
 
-  info "Stopping the service(${WEB_SERVICE_NAME}) for configuration modifications..."
+  # Reload vars now that .env has been updated
+  . "${WS_ENV_FILE}"
+
+  info "Obtaining production certificates via certbot (--profile ssl) ..."
+  docker compose --profile ssl up --force-recreate --no-deps "${CERT_SERVICE_NAME}"
+
+  info "Checking certificates were issued for ${DOMAIN_NAME} ..."
+  docker compose exec "${WEB_SERVICE_NAME}" ls -la /etc/letsencrypt/live/"${DOMAIN_NAME}" || \
+    error "Certificates not found — certbot may have failed. Check: docker compose --profile ssl logs ${CERT_SERVICE_NAME}"
+
+  info "Stopping the service(${WEB_SERVICE_NAME}) to pick up new ENABLE_SSL=true + domain ..."
   docker compose stop "${WEB_SERVICE_NAME}"
 
-  info "Changing the service(${WEB_SERVICE_NAME}) configuration to use SSL certs..."
-  rm -f "${WS_NGINX_DIR}/templates/default.conf.template"
-  cp -f "${WS_NGINX_DIR}/templates/default.nginx.conf.with.ssl.template" "${WS_NGINX_DIR}/templates/default.conf.template"
-
-  info "Recreating the service(${WEB_SERVICE_NAME}) with reloaded configuration ..."
+  info "Recreating the service(${WEB_SERVICE_NAME}) with SSL configuration ..."
   docker compose up -d --force-recreate --no-deps "${WEB_SERVICE_NAME}"
+
+  info "Updating WordPress siteurl and home to https://${DOMAIN_NAME} ..."
+  local wp_cli="docker compose run --rm wordpress-cli wp"
+  ${wp_cli} option update siteurl "https://${DOMAIN_NAME}" --allow-root --path="${WEBSERVER_ROOT}" ||
+    error "Failed to update siteurl in WordPress DB to https://${DOMAIN_NAME}"
+  ${wp_cli} option update home "https://${DOMAIN_NAME}" --allow-root --path="${WEBSERVER_ROOT}" ||
+    error "Failed to update home in WordPress DB to https://${DOMAIN_NAME}"
+  info "WordPress URLs updated to https://${DOMAIN_NAME}"
 
   info "${CONTAINER_NAME}-${CERT_SERVICE_NAME}: \"docker compose logs ${CERT_SERVICE_NAME}\""
   docker compose logs "${CERT_SERVICE_NAME}"

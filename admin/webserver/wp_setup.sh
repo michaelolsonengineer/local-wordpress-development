@@ -15,12 +15,10 @@
 # set -u: Throw error if undefined variable used
 set -e -u
 
-if [ -z "${TOOLS_COMMON_DIR-}" ]; then
-  # shellcheck disable=SC2155
-  declare -xg SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  source "${SCRIPT_DIR}/../../tools/common/constants.sh"
-  source "${SCRIPT_DIR}/../../tools/common/general_utils.sh"
-fi
+# shellcheck disable=SC2155
+declare -xg SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../../tools/common/constants.sh"
+source "${SCRIPT_DIR}/../../tools/common/general_utils.sh"
 
 # __script_help
 #       Called by the help script, this function should print out a help
@@ -103,12 +101,7 @@ __script_parse_opts() { # Optional
 __script_init() { # Optional
   log INFO "Initializing $0 ..."
   local confirmation
-  local dkc_exec="docker compose exec"
-  local built_cmd
-  local exec_cmd
-  local database_docker_ip
   local is_mysql_client_ssl_defined
-  local sideload_wordpress_setup_script="help_wp_setup.sh"
 
   echo "This script will adjust the WordPress installation into"
   echo "Your docker containers existing docker container's ${WEBSERVER_ROOT}"
@@ -124,54 +117,36 @@ __script_init() { # Optional
   # echo "(ex. example.org or test.example.org) do not include www or http/s"
   # echo "--------------------------------------------------"
 
-  # if applicable, configure wordpress to use mysql dbaas
+  # Load environment variables from the .env file
   if [ -e "${environment_file}" ]; then
-    # grab all the data from the password file
-    info "Loading environment installed configurations server from ${environment_file} ..."
+    info "Loading environment from ${environment_file} ..."
     . "${environment_file}"
+  else
+    error "Environment file not found: ${environment_file}"
+    exit 1
+  fi
 
-    # wait for db to become available
-    info "Waiting for your database to become available (this may take a few minutes)"
-    info "If this take too much time you may need to cancel over +5 min then, press Ctrl+C."
-    while ! mysqladmin ping -h "${DOMAIN_NAME}" -P "${DATABASE_PORT}" --silent; do
-      printf .
-      sleep 2
-    done
-    echo -e "\nDatabase available!\n"
+  # Wait for DB to be reachable on the host-exposed port.
+  # NOTE: We ping 127.0.0.1 not DOMAIN_NAME — the DB container port is exposed
+  # to the host's loopback, not to the domain name which resolves externally.
+  info "Waiting for your database to become available (this may take a few minutes)"
+  info "If this takes too long (>5 min) press Ctrl+C."
+  while ! mysqladmin ping -h 127.0.0.1 -P "${DATABASE_PORT}" --silent; do
+    printf .
+    sleep 2
+  done
+  echo -e "\nDatabase available!\n"
 
-    # update the wp-config.php with stored credentials
-    echo "#!/bin/sh" >"${temp_dir}/${sideload_wordpress_setup_script}"
-    {
-      __build_sed_replace DB_USER "${DATABASE_USER}"
-      __build_sed_replace DB_NAME "${DATABASE_NAME}"
-      __build_sed_replace DB_PASSWORD "${DATABASE_PASSWORD}"
-      __build_sed_replace DB_HOST "${CONTAINER_NAME}-database"
-    } >>"${temp_dir}/${sideload_wordpress_setup_script}"
-
-    # add required SSL flag
-    if [ -e "${WORKSPACE}/.enable_ssl_after_first_time_bring_up_complete" ]; then
-      is_mysql_client_ssl_defined=$(docker compose exec -it wordpress sh -c "grep -q 'MYSQLI_CLIENT_SSL' \"${WEBSERVER_ROOT}/wp-config.php\" && echo 'MYSQLI_CLIENT_SSL Defined'")
-      if [ "${is_mysql_client_ssl_defined}" = 'MYSQLI_CLIENT_SSL Defined' ]; then
-        info "MYSQLI_CLIENT_SSL is already defined in ${WEBSERVER_ROOT}/wp-config.php"
-      else
-        # add required SSL flag
-        echo "echo \"/** Connect to MySQL cluster over SSL **/\" >>${WEBSERVER_ROOT}/wp-config.php" >>"${temp_dir}/${sideload_wordpress_setup_script}"
-        echo "echo \"define( 'MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL );\" >>${WEBSERVER_ROOT}/wp-config.php" >>"${temp_dir}/${sideload_wordpress_setup_script}"
-      fi
+  if [ -e "${WORKSPACE}/.enable_ssl_after_first_time_bring_up_complete" ]; then
+    local is_mysql_client_ssl_defined
+    is_mysql_client_ssl_defined=$(docker compose exec wordpress sh -c "grep -q 'MYSQLI_CLIENT_SSL' \"${WEBSERVER_ROOT}/wp-config.php\" && echo 'MYSQLI_CLIENT_SSL Defined'" 2>/dev/null || true)
+    if [ "${is_mysql_client_ssl_defined}" = 'MYSQLI_CLIENT_SSL Defined' ]; then
+      info "MYSQLI_CLIENT_SSL is already defined in ${WEBSERVER_ROOT}/wp-config.php"
+    else
+      info "Adding MYSQLI_CLIENT_SSL flag to wp-config.php ..."
+      docker compose exec wordpress sh -c "echo '/** Connect to MySQL cluster over SSL **/' >> ${WEBSERVER_ROOT}/wp-config.php"
+      docker compose exec wordpress sh -c "echo \"define( 'MYSQL_CLIENT_FLAGS', MYSQLI_CLIENT_SSL );\" >> ${WEBSERVER_ROOT}/wp-config.php"
     fi
-
-    info "Going to execute on wordpress docker container the following ... $(cat "${temp_dir}/${sideload_wordpress_setup_script}")"
-
-    # Turn on extra verbosity for easier debugging
-    set -x
-    docker compose cp \
-      "${temp_dir}/${sideload_wordpress_setup_script}" \
-      "wordpress:${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
-
-    ${dkc_exec} wordpress chmod 755 "${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
-    ${dkc_exec} wordpress "${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
-    ${dkc_exec} wordpress rm "${WEBSERVER_ROOT}/${sideload_wordpress_setup_script}"
-    set +x
   fi
 
   info "Now we will create your new admin user account for WordPress"
@@ -261,13 +236,21 @@ __script_exec() { # Required
   wp_cli="docker compose run --rm ${wordpress_cli_service_name} wp"
   wordpress_shell="docker compose exec -it ${wordpress_service_name} sh -c"
 
+  local site_protocol
+  if [ "${ENABLE_SSL:-false}" = "true" ]; then
+    site_protocol="https"
+  else
+    site_protocol="http"
+  fi
+  info "Protocol: ${site_protocol} (ENABLE_SSL=${ENABLE_SSL:-false})"
+
   info "Performing core setup ... Setting title, admin-user, url, etc ..."
   warning "Skipping email since we don't have email setup yet on docker containers ..."
   ${wp_cli} core install \
     --allow-root \
     --path="${WEBSERVER_ROOT}" \
     --title="${wordpress_blog_title}" \
-    --url="${DOMAIN_NAME}" \
+    --url="${site_protocol}://${DOMAIN_NAME}" \
     --skip-email \
     --admin_email="${WORDPRESS_ADMIN_EMAIL}" \
     --admin_password="${WORDPRESS_ADMIN_PASSWORD}" \
@@ -277,16 +260,22 @@ __script_exec() { # Required
   # ${wp_cli} user create \
   #   "${WORDPRESS_ADMIN_USER}" "${WORDPRESS_ADMIN_EMAIL}" --role=administrator --user_pass="${WORDPRESS_ADMIN_PASSWORD}"
 
+  info "Updating WordPress core to latest version ..."
+  ${wp_cli} core update --allow-root --path="${WEBSERVER_ROOT}" ||
+    error "failed to update WordPress core through wp-cli ..."
+  ${wp_cli} core update-db --allow-root --path="${WEBSERVER_ROOT}" ||
+    error "failed to run WordPress DB migrations after core update ..."
+
   # Remove default posts, widgets, comments etc.
   info "Removing default posts, widgets, comments etc ..."
   ${wp_cli} site empty --allow-root --yes ||
     error "failed to remove default posts, widgets, comments etc through wp-cli ..."
 
   info "Setting home for proper SEO ..."
-  ${wp_cli} option update home "https://${DOMAIN_NAME}" ||
+  ${wp_cli} option update home "${site_protocol}://${DOMAIN_NAME}" ||
     error "failed to setup WordPress Address (URL) through wp-cli ..."
   info "Setting siteurl for proper SEO ..."
-  ${wp_cli} option update siteurl "https://${DOMAIN_NAME}" ||
+  ${wp_cli} option update siteurl "${site_protocol}://${DOMAIN_NAME}" ||
     error "failed to setup Site Address (URL) through wp-cli ..."
 
   # Select the permalink structure for your website. Including the %postname% tag makes links easy to understand,
@@ -313,39 +302,34 @@ __script_exec() { # Required
   ${wordpress_shell} "rm -rf ${WEBSERVER_ROOT}/wp-content/themes/twentytwenty*" ||
     error 'failed to remove twentytwenty* themes in wordpress docker ...'
 
-  # FIXME: this is not working yet, need to figure out how to connect through docker container network
-  # The CLI does not work reliably for Installing/activating/enabling Plugins with the
-  # docker compose network for automation purposes
+  info "Activating Akismet (preinstalled with default WordPress installation) ..."
+  {
+    ${wp_cli} plugin activate akismet --allow-root --path="${WEBSERVER_ROOT}" &&
+      ${wp_cli} plugin update akismet --allow-root --path="${WEBSERVER_ROOT}"
+  } || error "failed to activate akismet through wp-cli ..."
 
-  # info "Activating Askismet (preinstalled as with default wordpress installation). ..."
-  # (
-  #   ${wp_cli} plugin activate askismet &&
-  #   ${wp_cli} plugin update askismet --allow-root --path="${WEBSERVER_ROOT}"
-  # ) ||
-  #   error "failed to activate askismet through wp-cli..."
+  info "Activating Hello-Dolly (preinstalled with default WordPress installation)."
+  info "It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
+  info "\"Hello, Dolly\". When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
+  info "${STYLE_RESET}${RED}And if you want to remove it, ${BOLD}SHAME${STYLE_RESET}${RED} on you and your forefathers ..."
+  ${wp_cli} plugin activate hello --allow-root --path="${WEBSERVER_ROOT}" ||
+    error "failed to activate hello-dolly ..."
 
-  # info "Activating Hello-Dolly (preinstalled as with default wordpress installation)."
-  # info "It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
-  # info "\"Hello, Dolly\". When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
-  # info "${STYLE_RESET}${RED}And if you want to remove it, ${BOLD}SHAME${STYLE_RESET}${RED} on you and your forefathers ..."
-  # ${wp_cli} plugin activate hello ||
-  #   error "failed to activate hello-dolly and symbolizes the hope and enthusiasm so SHAME on those who delete it ..."
-
-  # # Install and activate Astra theme
-  # info "Installing and activating Astra theme ..."
-  # (
-  #   ${wp_cli} plugin install astra --allow-root --path="${WEBSERVER_ROOT}" &&
-  #     docker cp "${wordpress_service_name}:${WEBSERVER_ROOT}/wp-content/themes/astra" "${webserver_service_name}:${WEBSERVER_ROOT}/wp-content/themes/astra"
-  #     ${wp_cli} plugin activate astra --allow-root --path="${WEBSERVER_ROOT}"
-  # ) || error "failed to install and activate astra through wp-cli ..."
-
-  # TODO NOTE: this is not working yet, need to figure out how to connect through docker container network
   # Install and activate WP Fail2Ban plugin
-  # info "Installing and activating WP Fail2Ban plugin ..."
-  # (
-  #   ${wp_cli} plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}" &&
-  #     ${wp_cli} plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
-  # ) || error "failed to install and activate fail2ban through wp-cli ..."
+  info "Installing and activating WP Fail2Ban plugin ..."
+  {
+    ${wp_cli} plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}" &&
+      ${wp_cli} plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
+  } || error "failed to install and activate fail2ban through wp-cli ..."
+
+  # Install and activate Astra theme
+  # NOTE: Theme installs go directly into the wordpress volume via wp-cli;
+  # no docker cp between containers needed — the ./src bind mount handles wp-content.
+  info "Installing and activating Astra theme ..."
+  {
+    ${wp_cli} theme install astra --allow-root --path="${WEBSERVER_ROOT}" &&
+      ${wp_cli} theme activate astra --allow-root --path="${WEBSERVER_ROOT}"
+  } || error "failed to install and activate astra through wp-cli ..."
 
   set +x
 }

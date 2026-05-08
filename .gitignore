@@ -98,3 +98,8 @@ devel/
 
 ## Pyenv python version file
 .python-version
+
+# WordPress active development sources
+# Track themes and plugins, but never commit uploaded media
+src/uploads/*
+!src/uploads/.gitkeep
