@@ -211,6 +211,7 @@ __script_exec() { # Required
   local wp_cli
   local default_theme
   local default_themes
+  local site_protocol
 
   # FIXME: this need to be done differently with a script I think
   # follow instructions on https://www.digitalocean.com/community/tutorials/how-to-install-wordpress-with-docker-compose
@@ -236,7 +237,6 @@ __script_exec() { # Required
   wp_cli="docker compose run --rm ${wordpress_cli_service_name} wp"
   wordpress_shell="docker compose exec -it ${wordpress_service_name} sh -c"
 
-  local site_protocol
   if [ "${ENABLE_SSL:-false}" = "true" ]; then
     site_protocol="https"
   else
