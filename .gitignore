@@ -103,3 +103,6 @@ devel/
 # Track themes and plugins, but never commit uploaded media
 src/uploads/*
 !src/uploads/.gitkeep
+
+# Ignore the downloaded wp-cli tool
+admin/webserver/wp
