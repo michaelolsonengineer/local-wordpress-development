@@ -41,7 +41,7 @@ jobs:
 
     steps:
       - name: Install doctl
-        uses: digitalocean/action-doctl@v2
+        uses: digitalocean/action-doctl@v2.5.2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
@@ -97,7 +97,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install doctl
-        uses: digitalocean/action-doctl@v2
+        uses: digitalocean/action-doctl@v2.5.2
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
@@ -112,7 +112,7 @@ jobs:
           echo "sha=${REGISTRY}/wordpress:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push WordPress image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v7.1.0
         with:
           context: .
           file: Dockerfile
@@ -122,7 +122,7 @@ jobs:
             ${{ steps.tags.outputs.sha }}
 
       - name: Deploy updated image to Droplet via SSH
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ needs.bootstrap-droplet.outputs.ip }}
           username: ${{ secrets.DROPLET_USER || 'root' }}
