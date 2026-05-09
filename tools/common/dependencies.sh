@@ -14,6 +14,8 @@ source "${TOOLS_COMMON_DIR:-.}/constants.sh"
 #   pip3: python install manager
 #   jq: JSON processor
 #   yq: YAML processor
+#   python3-fonttools: OTF/TTF → TTF/WOFF/WOFF2 conversion (used by convert_fonts.py)
+#   python3-brotli: brotli compression support required for WOFF2 output
 # Usage: install_basic_packages
 install_basic_packages() {
   log INFO "Checking basic packages..."
@@ -61,6 +63,12 @@ install_basic_packages() {
     install_basic_group=true
   fi
 
+  local install_fonttools=""
+  if ! /usr/bin/python3 -c "import fontTools" 2>/dev/null && ! python3 -c "import fontTools" 2>/dev/null; then
+    install_fonttools="python3-fonttools python3-brotli"
+    install_basic_group=true
+  fi
+
   if [ "${install_basic_group}" = true ]; then
     log INFO "Installing necessary basic packages"
     # shellcheck disable=SC2086
@@ -71,7 +79,8 @@ install_basic_packages() {
       ${install_pip3} \
       ${install_jq} \
       ${install_yq} \
-      ${install_acl}
+      ${install_acl} \
+      ${install_fonttools}
   fi
 }
 

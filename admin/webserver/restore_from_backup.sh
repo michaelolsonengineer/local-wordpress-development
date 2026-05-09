@@ -10,6 +10,8 @@
 #     3. Detect non-default table prefix and update .env + restart wordpress container
 #     4. Rewrite all production domain references → http://localhost (options + postmeta)
 #     5. Download missing custom font files (tries production, falls back to 1001fonts)
+#        then convert each font to all missing web variants (TTF/WOFF/WOFF2) via
+#        tools/common/convert_fonts.py
 #     6. Create / update the local admin user from .env credentials
 #     7. Report custom AIOS login slug if rename-login is active
 #
@@ -282,9 +284,37 @@ _post_import_tasks() {
 }
 
 # ------------------------------------------------------------------------------
+# _convert_font_variants
+#   Given a font file path, runs convert_fonts.py to produce any missing
+#   TTF/WOFF/WOFF2 siblings alongside it.
+# ------------------------------------------------------------------------------
+_convert_font_variants() {
+  local font_file="${1}"
+  local script="${SCRIPT_DIR}/../../tools/common/convert_fonts.py"
+
+  # Prefer the system Python3 which has python3-fonttools/python3-brotli via apt;
+  # fall back to whatever python3 is on PATH.
+  local py
+  if /usr/bin/python3 -c "import fontTools" 2>/dev/null; then
+    py=/usr/bin/python3
+  elif python3 -c "import fontTools" 2>/dev/null; then
+    py=python3
+  else
+    warning "    fontTools not found — skipping web-font conversion for $(basename "${font_file}")."
+    warning "    Install with: sudo apt-get install -y python3-fonttools python3-brotli"
+    return
+  fi
+
+  info "    Converting web-font variants for $(basename "${font_file}") ..."
+  "${py}" "${script}" "${font_file}" 2>&1 | while IFS= read -r line; do
+    info "      ${line}"
+  done
+}
+
 # _fetch_custom_fonts
 #   Finds all custom font file URLs in postmeta, checks if files are present
 #   locally, and downloads them (production first, then 1001fonts as fallback).
+#   After each font is placed on disk, converts to all missing web variants.
 # ------------------------------------------------------------------------------
 _fetch_custom_fonts() {
   local prefix="${1}" db_user="${2}" db_pass="${3}" db_name="${4}"
@@ -313,6 +343,7 @@ _fetch_custom_fonts() {
 
     if [ -f "${local_path}" ]; then
       info "  Font already present: ${filename}"
+      _convert_font_variants "${local_path}"
       continue
     fi
 
@@ -323,6 +354,7 @@ _fetch_custom_fonts() {
     if curl -fsSL -o "${local_path}" "${url}" 2>/dev/null; then
       sudo chown "$(id -u):$(id -g)" "${local_path}"
       info "    Downloaded from production: ${filename}"
+      _convert_font_variants "${local_path}"
       continue
     fi
 
@@ -344,6 +376,7 @@ _fetch_custom_fonts() {
         unzip -p "${tmp_zip}" "${extracted}" | sudo tee "${local_path}" > /dev/null
         sudo chown "$(id -u):$(id -g)" "${local_path}"
         info "    Installed from 1001fonts: ${filename}"
+        _convert_font_variants "${local_path}"
       else
         warning "    .${ext} not found in 1001fonts zip for '${slug}'. Install manually into: ${dest_dir}/"
       fi
