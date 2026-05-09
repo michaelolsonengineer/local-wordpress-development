@@ -55,7 +55,7 @@ jobs:
             echo "Creating Droplet: ${PREVIEW_NAME} ..."
             doctl compute droplet create "${PREVIEW_NAME}" \
               --size s-1vcpu-1gb \
-              --image docker-24-04 \
+              --image ubuntu-24-04-x64 \
               --region nyc3 \
               --ssh-keys "${{ secrets.DO_SSH_KEY_FINGERPRINT }}" \
               --wait
