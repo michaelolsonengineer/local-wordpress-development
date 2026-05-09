@@ -20,7 +20,7 @@ name: Build, Push, and Deploy Image
 
 on:
   push:
-    branches: [main, develop]
+    branches: [wordpress-production]
   workflow_dispatch:
 
 permissions:
