@@ -69,7 +69,7 @@ jobs:
           if [ -z "$EXISTING_IP" ]; then
             echo "Creating Droplet: ${PREVIEW_NAME} ..."
             doctl compute droplet create "${PREVIEW_NAME}" \
-              --size s-1vcpu-1gb \
+              --size s-1vcpu-2gb \
               --image ubuntu-24-04-x64 \
               --region nyc3 \
               --ssh-keys "${{ secrets.DO_SSH_KEY_FINGERPRINT }}" \
