@@ -25,6 +25,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: deploy-app-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   DROPLET_NAME: wordpress-production
   DROPLET_REGION: nyc3

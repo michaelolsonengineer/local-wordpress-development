@@ -21,6 +21,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: preview-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: false
+
 jobs:
   delete-preview:
     name: Destroy preview Droplet for PR #${{ github.event.pull_request.number || inputs.pr_number }}
