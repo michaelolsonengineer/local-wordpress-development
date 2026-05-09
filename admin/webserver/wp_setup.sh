@@ -232,8 +232,6 @@ __script_exec() { # Required
 
   info "Completing the configuration of WordPress ..."
 
-  # echo the command to the user
-  set -x
   wp_cli="docker compose run --rm ${wordpress_cli_service_name} wp"
   wordpress_shell="docker compose exec -it ${wordpress_service_name} sh -c"
 
@@ -246,7 +244,7 @@ __script_exec() { # Required
 
   info "Performing core setup ... Setting title, admin-user, url, etc ..."
   warning "Skipping email since we don't have email setup yet on docker containers ..."
-  ${wp_cli} core install \
+  run ${wp_cli} core install \
     --allow-root \
     --path="${WEBSERVER_ROOT}" \
     --title="${wordpress_blog_title}" \
@@ -261,77 +259,102 @@ __script_exec() { # Required
   #   "${WORDPRESS_ADMIN_USER}" "${WORDPRESS_ADMIN_EMAIL}" --role=administrator --user_pass="${WORDPRESS_ADMIN_PASSWORD}"
 
   info "Updating WordPress core to latest version ..."
-  ${wp_cli} core update --allow-root --path="${WEBSERVER_ROOT}" ||
+  run ${wp_cli} core update --allow-root --path="${WEBSERVER_ROOT}" ||
     error "failed to update WordPress core through wp-cli ..."
-  ${wp_cli} core update-db --allow-root --path="${WEBSERVER_ROOT}" ||
+  run ${wp_cli} core update-db --allow-root --path="${WEBSERVER_ROOT}" ||
     error "failed to run WordPress DB migrations after core update ..."
 
   # Remove default posts, widgets, comments etc.
   info "Removing default posts, widgets, comments etc ..."
-  ${wp_cli} site empty --allow-root --yes ||
+  run ${wp_cli} site empty --allow-root --yes ||
     error "failed to remove default posts, widgets, comments etc through wp-cli ..."
 
   info "Setting home for proper SEO ..."
-  ${wp_cli} option update home "${site_protocol}://${DOMAIN_NAME}" ||
+  run ${wp_cli} option update home "${site_protocol}://${DOMAIN_NAME}" ||
     error "failed to setup WordPress Address (URL) through wp-cli ..."
   info "Setting siteurl for proper SEO ..."
-  ${wp_cli} option update siteurl "${site_protocol}://${DOMAIN_NAME}" ||
+  run ${wp_cli} option update siteurl "${site_protocol}://${DOMAIN_NAME}" ||
     error "failed to setup Site Address (URL) through wp-cli ..."
 
-  # Select the permalink structure for your website. Including the %postname% tag makes links easy to understand,
-  # and can help your posts rank higher in search engines.
   info "Set the permalink structure for your website. ..."
-  ${wp_cli} option update permalink_structure "/%postname%/" --skip-themes --skip-plugins ||
+  run ${wp_cli} option update permalink_structure "/%postname%/" --skip-themes --skip-plugins ||
     error "failed to install set permalink structure through wp-cli ..."
 
   info "Set default timezone, timeformat, start of the week information ..."
-  ${wp_cli} option update timezone_string "America/Detroit" ||
+  run ${wp_cli} option update timezone_string "America/Detroit" ||
     error "failed to setup timezone to Detroit through wp-cli ..."
-  ${wp_cli} option update time_format "g:i A" ||
+  run ${wp_cli} option update time_format "g:i A" ||
     error "failed to setup time format to look like \"2:15 PM\" through wp-cli ..."
-  ${wp_cli} option update start_of_week 0 ||
+  run ${wp_cli} option update start_of_week 0 ||
     error "failed to set start of the week to be Sunday through wp-cli ..."
 
   # Remove old default themes ...
   default_themes=(twentytwentyfive twentytwentyfour twentytwentythree twentytwentytwo)
   for default_theme in "${default_themes[@]}"; do
     info "Removing default themes (${default_themes[*]}) ..."
-    ${wp_cli} theme delete --allow-root "${default_theme}" ||
+    run ${wp_cli} theme delete --allow-root "${default_theme}" ||
       error "failed to delete theme ${default_theme} through wp-cli ..."
   done
-  ${wordpress_shell} "rm -rf ${WEBSERVER_ROOT}/wp-content/themes/twentytwenty*" ||
+  run ${wordpress_shell} "rm -rf ${WEBSERVER_ROOT}/wp-content/themes/twentytwenty*" ||
     error 'failed to remove twentytwenty* themes in wordpress docker ...'
 
-  info "Activating Akismet (preinstalled with default WordPress installation) ..."
-  {
-    ${wp_cli} plugin activate akismet --allow-root --path="${WEBSERVER_ROOT}" &&
-      ${wp_cli} plugin update akismet --allow-root --path="${WEBSERVER_ROOT}"
-  } || error "failed to activate akismet through wp-cli ..."
+  # ---------------------------------------------------------------------------
+  # Plugins: install, activate, enable auto-updates
+  # Pre-installed plugins (ship with WordPress) need force install.
+  # All others are fetched from the WordPress plugin repository.
+  # ---------------------------------------------------------------------------
 
   info "Activating Hello-Dolly (preinstalled with default WordPress installation)."
   info "It is not just a plugin, it symbolizes the hope and enthusiasm of an entire generation summed up in two words sung most famously by Louis Armstrong:"
   info "\"Hello, Dolly\". When activated you will randomly see a lyric from Hello, Dolly in the upper right of your admin screen on every page."
   info "${STYLE_RESET}${RED}And if you want to remove it, ${BOLD}SHAME${STYLE_RESET}${RED} on you and your forefathers ..."
-  ${wp_cli} plugin activate hello --allow-root --path="${WEBSERVER_ROOT}" ||
+  run ${wp_cli} plugin activate hello --allow-root --path="${WEBSERVER_ROOT}" ||
     error "failed to activate hello-dolly ..."
+  run ${wp_cli} plugin auto-updates enable hello --allow-root --path="${WEBSERVER_ROOT}" ||
+    warning "failed to enable auto-updates for hello-dolly ..."
 
-  # Install and activate WP Fail2Ban plugin
-  info "Installing and activating WP Fail2Ban plugin ..."
-  {
-    ${wp_cli} plugin install wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}" &&
-      ${wp_cli} plugin activate wp-fail2ban --allow-root --path="${WEBSERVER_ROOT}"
-  } || error "failed to install and activate fail2ban through wp-cli ..."
+  # Plugins to install, activate, and enable auto-updates for.
+  # --force on install ensures pre-installed plugins (akismet, ) are upgraded to
+  # latest even when WordPress ships an older bundled version.
+  declare -a install_plugins=(
+    akismet                               # Akismet Anti-Spam
+    all-in-one-wp-security-and-firewall   # All-In-One Security (AIOS)
+    cloudflare                            # Cloudflare
+    custom-fonts                          # Custom Fonts (Astra companion)
+    ewww-image-optimizer                  # EWWW Image Optimizer
+    smart-smtp                            # SmartSMTP by ThemeGrill
+    ultimate-addons-for-gutenberg         # Spectra (Ultimate Addons for Gutenberg)
+    updraftplus                           # UpdraftPlus Backup/Restore
+    w3-total-cache                        # W3 Total Cache
+    wp-fail2ban                           # WP Fail2Ban
+  )
 
-  # Install and activate Astra theme
+  for plugin in "${install_plugins[@]}"; do
+    info "Installing, activating, and enabling auto-updates for plugin: ${plugin} ..."
+    {
+      run ${wp_cli} plugin install "${plugin}" --force --allow-root --path="${WEBSERVER_ROOT}" &&
+        run ${wp_cli} plugin activate "${plugin}" --allow-root --path="${WEBSERVER_ROOT}" &&
+        run ${wp_cli} plugin auto-updates enable "${plugin}" --allow-root --path="${WEBSERVER_ROOT}"
+    } || error "Failed to install/activate/enable auto-updates for plugin: ${plugin}"
+  done
+
+  # ---------------------------------------------------------------------------
+  # Theme: install, activate, enable auto-updates
   # NOTE: Theme installs go directly into the wordpress volume via wp-cli;
   # no docker cp between containers needed — the ./src bind mount handles wp-content.
+  # ---------------------------------------------------------------------------
   info "Installing and activating Astra theme ..."
   {
-    ${wp_cli} theme install astra --allow-root --path="${WEBSERVER_ROOT}" &&
-      ${wp_cli} theme activate astra --allow-root --path="${WEBSERVER_ROOT}"
-  } || error "failed to install and activate astra through wp-cli ..."
+    run ${wp_cli} theme install astra --allow-root --path="${WEBSERVER_ROOT}" &&
+      run ${wp_cli} theme activate astra --allow-root --path="${WEBSERVER_ROOT}" &&
+      run ${wp_cli} theme auto-updates enable astra --allow-root --path="${WEBSERVER_ROOT}"
+  } || error "failed to install/activate/enable auto-updates for astra theme ..."
 
-  set +x
+  info "Enabling WordPress core auto-updates ..."
+  run ${wp_cli} option update auto_update_core_major enabled --allow-root --path="${WEBSERVER_ROOT}" ||
+    warning "failed to enable major core auto-updates ..."
+  run ${wp_cli} option update auto_update_core_minor enabled --allow-root --path="${WEBSERVER_ROOT}" ||
+    warning "failed to enable minor core auto-updates ..."
 }
 
 # __script_succeed (optional)

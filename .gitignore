@@ -104,5 +104,9 @@ devel/
 src/uploads/*
 !src/uploads/.gitkeep
 
+# WordPress container config — track the php.ini but not generated files
+!wordpress/
+!wordpress/php.ini
+
 # Ignore the downloaded wp-cli tool
 admin/webserver/wp
