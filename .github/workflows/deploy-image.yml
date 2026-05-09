@@ -6,10 +6,15 @@
 # Required GitHub Secrets:
 #   DIGITALOCEAN_ACCESS_TOKEN   - DO personal access token (for doctl + registry)
 #   DO_REGISTRY_NAME            - DO registry name (e.g. myregistry, not the full URL)
-#   DROPLET_HOST                - Production droplet IP or hostname
-#   DROPLET_USER                - SSH user on the droplet (e.g. root)
+#   DO_SSH_KEY_FINGERPRINT      - SSH key fingerprint to inject into new Droplets
+#   DROPLET_HOST                - Production droplet IP (set after first run)
+#   DROPLET_USER                - SSH user on the droplet (default: root)
 #   DROPLET_SSH_KEY             - Private SSH key for droplet access
-#   DEPLOY_PATH                 - Absolute path on droplet (e.g. /srv/wordpress)
+#   DEPLOY_PATH                 - Absolute path on droplet (default: /srv/wordpress)
+#
+# First-run behaviour: if DROPLET_HOST is not set, bootstrap-droplet creates a
+# Droplet named "wordpress-production", prints the IP, then exits non-zero.
+# Add DROPLET_HOST=<ip> to GitHub Secrets and re-run to complete the deploy.
 
 name: Build, Push, and Deploy Image
 
@@ -20,10 +25,71 @@ on:
 permissions:
   contents: read
 
+env:
+  DROPLET_NAME: wordpress-production
+  DROPLET_REGION: nyc3
+  DROPLET_SIZE: s-1vcpu-2gb
+  DROPLET_IMAGE: docker-20-04
+
 jobs:
+  bootstrap-droplet:
+    name: Ensure production Droplet exists
+    runs-on: ubuntu-latest
+    outputs:
+      ip: ${{ steps.resolve.outputs.ip }}
+
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Create Droplet if it does not exist
+        id: resolve
+        run: |
+          if [ -n "${{ secrets.DROPLET_HOST }}" ]; then
+            echo "Using existing DROPLET_HOST secret."
+            echo "ip=${{ secrets.DROPLET_HOST }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          EXISTING_IP=$(doctl compute droplet list \
+            --format Name,PublicIPv4 --no-header \
+            | awk -v name="${DROPLET_NAME}" '$1 == name {print $2}')
+
+          if [ -n "$EXISTING_IP" ]; then
+            echo "Droplet '${DROPLET_NAME}' already exists at ${EXISTING_IP}."
+            echo "ip=${EXISTING_IP}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Creating Droplet '${DROPLET_NAME}' ..."
+          doctl compute droplet create "${DROPLET_NAME}" \
+            --size "${DROPLET_SIZE}" \
+            --image "${DROPLET_IMAGE}" \
+            --region "${DROPLET_REGION}" \
+            --ssh-keys "${{ secrets.DO_SSH_KEY_FINGERPRINT }}" \
+            --wait
+
+          sleep 30
+
+          NEW_IP=$(doctl compute droplet list \
+            --format Name,PublicIPv4 --no-header \
+            | awk -v name="${DROPLET_NAME}" '$1 == name {print $2}')
+
+          echo "ip=${NEW_IP}" >> "$GITHUB_OUTPUT"
+          echo ""
+          echo "================================================================"
+          echo "  Droplet created at: ${NEW_IP}"
+          echo "  ACTION REQUIRED: add this GitHub Secret, then re-run:"
+          echo "    DROPLET_HOST = ${NEW_IP}"
+          echo "================================================================"
+          exit 1
+
   build-push-deploy:
     name: Build image → push to DO registry → deploy
     runs-on: ubuntu-latest
+    needs: bootstrap-droplet
 
     steps:
       - name: Checkout repository
@@ -57,8 +123,8 @@ jobs:
       - name: Deploy updated image to Droplet via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.DROPLET_HOST }}
-          username: ${{ secrets.DROPLET_USER }}
+          host: ${{ needs.bootstrap-droplet.outputs.ip }}
+          username: ${{ secrets.DROPLET_USER || 'root' }}
           key: ${{ secrets.DROPLET_SSH_KEY }}
           script: |
             set -e
