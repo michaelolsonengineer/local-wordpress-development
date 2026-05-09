@@ -55,6 +55,12 @@ install_basic_packages() {
     install_basic_group=true
   fi
 
+  local install_acl=""
+  if ! is_installed "setfacl"; then
+    install_acl="acl"
+    install_basic_group=true
+  fi
+
   if [ "${install_basic_group}" = true ]; then
     log INFO "Installing necessary basic packages"
     # shellcheck disable=SC2086
@@ -64,7 +70,8 @@ install_basic_packages() {
       ${install_git} \
       ${install_pip3} \
       ${install_jq} \
-      ${install_yq}
+      ${install_yq} \
+      ${install_acl}
   fi
 }
 
