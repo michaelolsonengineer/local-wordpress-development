@@ -149,6 +149,10 @@ _copy_backup_files() {
   local updraft_dir="/var/www/html/wp-content/updraft"
 
   info "Copying backup files into container at ${updraft_dir} ..."
+
+  # Ensure the updraft directory exists inside the container
+  docker compose exec -T wordpress mkdir -p "${updraft_dir}"
+
   if [ -d "${_backup_path}" ]; then
     for f in "${_backup_path}"/*; do
       [ -f "${f}" ] || continue
