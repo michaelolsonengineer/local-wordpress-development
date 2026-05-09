@@ -317,17 +317,28 @@ first_time_bring_up() {
   # Host www-data (uid 33) != container www-data (uid 82 on Alpine fpm), so chown
   # alone does not help. Strategy depends on environment:
   #
-  #   preview / production (CI, root-owned Droplet):
-  #     chmod 777 — simple, no security concern on an ephemeral/isolated host.
+  #   production:
+  #     chown 82:82 + chmod 755/644 — tight permissions, only the container writes.
+  #
+  #   preview (ephemeral CI Droplet):
+  #     chmod 777 — simple, no security concern on an isolated/short-lived host.
   #
   #   local (developer workstation):
-  #     Use POSIX ACLs to grant uid 82 (container www-data) rw access while
-  #     keeping the developer as owner so no sudo is needed for edits.
-  #     Falls back to chown developer:www-data + 775 if setfacl is unavailable.
+  #     POSIX ACLs grant uid 82 (container www-data) rw access while keeping the
+  #     developer as owner so no sudo is needed for edits.
+  #     Falls back to chown developer:group + chmod 775 if setfacl is unavailable.
   #
   local _env="${ENVIRONMENT:-local}"
-  if [ "${_env}" = "preview" ] || [ "${_env}" = "production" ]; then
-    info "Preview/production environment — setting src/ to 777 ..."
+  if [ "${_env}" = "production" ]; then
+    # Production: own by container's www-data (uid 82 on Alpine fpm).
+    # Directories 755, files 644 — only the container can write.
+    info "Production environment — chown 82:82 + chmod 755/644 on src/ ..."
+    sudo chown -R 82:82 "${WORKSPACE}/src" || true
+    sudo find "${WORKSPACE}/src" -type d -exec chmod 755 {} + || true
+    sudo find "${WORKSPACE}/src" -type f -exec chmod 644 {} + || true
+  elif [ "${_env}" = "preview" ]; then
+    # Preview: ephemeral/isolated host, chmod 777 is fine and avoids uid mismatch complexity.
+    info "Preview environment — setting src/ to 777 ..."
     sudo chmod -R 777 "${WORKSPACE}/src" || true
   else
     info "Local environment — applying ACL for container uid 82 on src/ ..."
