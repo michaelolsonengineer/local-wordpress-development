@@ -277,11 +277,15 @@ __script_exec() { # Required
   # ${wp_cli} user create \
   #   "${WORDPRESS_ADMIN_USER}" "${WORDPRESS_ADMIN_EMAIL}" --role=administrator --user_pass="${WORDPRESS_ADMIN_PASSWORD}"
 
-  info "Updating WordPress core to latest version ..."
-  run ${wp_cli} core update --allow-root --path="${WEBSERVER_ROOT}" ||
-    error "failed to update WordPress core through wp-cli ..."
-  run ${wp_cli} core update-db --allow-root --path="${WEBSERVER_ROOT}" ||
-    error "failed to run WordPress DB migrations after core update ..."
+  if [ "${NON_INTERACTIVE}" = "true" ]; then
+    info "Skipping wp core update in non-interactive/CI mode (image ships recent version)."
+  else
+    info "Updating WordPress core to latest version ..."
+    run ${wp_cli} core update --allow-root --path="${WEBSERVER_ROOT}" ||
+      error "failed to update WordPress core through wp-cli ..."
+    run ${wp_cli} core update-db --allow-root --path="${WEBSERVER_ROOT}" ||
+      error "failed to run WordPress DB migrations after core update ..."
+  fi
 
   # Remove default posts, widgets, comments etc.
   info "Removing default posts, widgets, comments etc ..."
