@@ -1,0 +1,54 @@
+# delete-preview.yml
+#
+# Destroys the ephemeral preview Droplet when a pull request is closed
+# (merged or abandoned). Mirrors the digitalocean/app_action/delete pattern
+# from the DO App Platform docs, adapted for Droplets.
+#
+# Required GitHub Secrets:
+#   DIGITALOCEAN_ACCESS_TOKEN   - DO personal access token
+
+name: Delete PR Preview Environment
+
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number whose preview Droplet to destroy (e.g. 9)'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  delete-preview:
+    name: Destroy preview Droplet for PR #${{ github.event.pull_request.number || inputs.pr_number }}
+    runs-on: ubuntu-latest
+
+    env:
+      PREVIEW_NAME: pr-${{ github.event.pull_request.number || inputs.pr_number }}
+
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2.5.2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Destroy preview Droplet
+        run: |
+          DROPLET_ID=$(doctl compute droplet list \
+            --format ID,Name --no-header \
+            | awk -v name="${PREVIEW_NAME}" '$2 == name {print $1}')
+
+          if [ -n "$DROPLET_ID" ]; then
+            echo "Destroying Droplet '${PREVIEW_NAME}' (ID: ${DROPLET_ID}) ..."
+            doctl compute droplet delete "$DROPLET_ID" --force
+            echo "Droplet destroyed."
+          else
+            echo "No Droplet found for '${PREVIEW_NAME}' — nothing to destroy."
+          fi

@@ -24,15 +24,15 @@ declare -xg WS_ENV_FILE="${WORKSPACE}/.env"
 # and https://tldp.org/HOWTO/Bash-Prompt-HOWTO/x361.html
 # for more info on tput
 # and https://stackoverflow.com/questions/5947742/how-to-change-the-output-color-of-echo-in-linux
-declare -xg FG_BLACK="$(tput setaf 0)"
-declare -xg FG_RED="$(tput setaf 1)"
-declare -xg FG_GREEN="$(tput setaf 2)"
-declare -xg FG_YELLOW="$(tput setaf 3)"
-declare -xg FG_BLUE="$(tput setaf 4)"
-declare -xg FG_MAGENTA="$(tput setaf 5)"
-declare -xg FG_CYAN="$(tput setaf 6)"
-declare -xg FG_WHITE="$(tput setaf 7)"
-declare -xg STYLE_RESET="$(tput sgr0)"
+declare -xg FG_BLACK="$(tput setaf 0 2>/dev/null || true)"
+declare -xg FG_RED="$(tput setaf 1 2>/dev/null || true)"
+declare -xg FG_GREEN="$(tput setaf 2 2>/dev/null || true)"
+declare -xg FG_YELLOW="$(tput setaf 3 2>/dev/null || true)"
+declare -xg FG_BLUE="$(tput setaf 4 2>/dev/null || true)"
+declare -xg FG_MAGENTA="$(tput setaf 5 2>/dev/null || true)"
+declare -xg FG_CYAN="$(tput setaf 6 2>/dev/null || true)"
+declare -xg FG_WHITE="$(tput setaf 7 2>/dev/null || true)"
+declare -xg STYLE_RESET="$(tput sgr0 2>/dev/null || true)"
 
 # source https://stackoverflow.com/a/28938235
 declare -xg STYLE_RESET='\033[0;0m' # Text Reset

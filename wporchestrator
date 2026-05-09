@@ -70,6 +70,9 @@ __script_help() { # Required
         nuke:
             nuke. Don't use this unless you are sure
     args:
+        --yes | --non-interactive:
+            Skip all interactive prompts in wp_setup. Requires WORDPRESS_ADMIN_EMAIL,
+            WORDPRESS_ADMIN_USER, and WORDPRESS_ADMIN_PASSWORD in the .env file.
 
 # Side Effects
     None
@@ -90,12 +93,16 @@ __script_parse_opts() { # Optional
   declare -xg _do_first_time_bring_up_flag="false"
   declare -xg _do_enable_ssl_after_first_time_bring_up_flag="false"
   declare -xg force="false"
+  declare -xg yes="false"
 
   # Parse options
   while (($#)); do
     case "${1}" in
     --force)
       force="true"
+      ;;
+    --yes | --non-interactive)
+      yes="true"
       ;;
     install_dependencies)
       info "Running install_dependencies ..."
@@ -116,7 +123,9 @@ __script_parse_opts() { # Optional
       ;;
     wp-setup)
       info "Running wp-setup ..."
-      bash "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
+      local _wp_setup_yes_flag=""
+      [ "${yes}" = "true" ] && _wp_setup_yes_flag="--yes"
+      bash "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env" ${_wp_setup_yes_flag}
       exit 0
       ;;
     restore-from-backup)
@@ -303,10 +312,58 @@ first_time_bring_up() {
   # Check if wordpress files were created
   [ -e "${WORKSPACE}/src" ] ||
     error "WordPress src bind-mount not found — did the volume fail to populate?"
+
+  # Fix permissions on the src/ bind-mount so the wordpress container can write.
+  # Host www-data (uid 33) != container www-data (uid 82 on Alpine fpm), so chown
+  # alone does not help. Strategy depends on environment:
+  #
+  #   production:
+  #     chown 82:82 + chmod 755/644 — tight permissions, only the container writes.
+  #
+  #   preview (ephemeral CI Droplet):
+  #     chmod 777 — simple, no security concern on an isolated/short-lived host.
+  #
+  #   local (developer workstation):
+  #     POSIX ACLs grant uid 82 (container www-data) rw access while keeping the
+  #     developer as owner so no sudo is needed for edits.
+  #     Falls back to chown developer:group + chmod 775 if setfacl is unavailable.
+  #
+  local _env="${ENVIRONMENT:-local}"
+  if [ "${_env}" = "production" ]; then
+    # Production: own by container's www-data (uid 82 on Alpine fpm).
+    # Directories 755, files 644 — only the container can write.
+    info "Production environment — chown 82:82 + chmod 755/644 on src/ ..."
+    sudo chown -R 82:82 "${WORKSPACE}/src" || true
+    sudo find "${WORKSPACE}/src" -type d -exec chmod 755 {} + || true
+    sudo find "${WORKSPACE}/src" -type f -exec chmod 644 {} + || true
+  elif [ "${_env}" = "preview" ]; then
+    # Preview: ephemeral/isolated host, chmod 777 is fine and avoids uid mismatch complexity.
+    info "Preview environment — setting src/ to 777 ..."
+    sudo chmod -R 777 "${WORKSPACE}/src" || true
+  else
+    info "Local environment — applying ACL for container uid 82 on src/ ..."
+    if command -v setfacl >/dev/null 2>&1; then
+      # Grant container www-data (uid 82) rwx + propagate to new files via default ACL
+      sudo setfacl -R \
+        -m "u:$(id -un):rwX" \
+        -m "u:82:rwX" \
+        -m "d:u:$(id -un):rwX" \
+        -m "d:u:82:rwX" \
+        "${WORKSPACE}/src" || true
+      info "ACL applied. You can edit src/ without sudo."
+    else
+      warning "setfacl not found — falling back to chown + chmod 775."
+      warning "Install 'acl' package for proper per-uid permissions: sudo apt install acl"
+      sudo chown -R "$(id -un)":"$(id -gn)" "${WORKSPACE}/src" || true
+      sudo chmod -R 775 "${WORKSPACE}/src" || true
+    fi
+  fi
   info "All containers up. Run './wporchestrator logs' to inspect individual container output."
 
   info "Running WordPress setup ..."
-  bash "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
+  local _wp_setup_yes_flag=""
+  [ "${yes}" = "true" ] && _wp_setup_yes_flag="--yes"
+  bash "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env" ${_wp_setup_yes_flag}
 
   # Create a file to indicate first time bring up is complete and avoid
   # running this function again

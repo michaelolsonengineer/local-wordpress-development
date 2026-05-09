@@ -1,0 +1,147 @@
+# deploy-image.yml
+#
+# Builds the WordPress Docker image, pushes it to the DigitalOcean Container
+# Registry, then deploys the new image to the production Droplet.
+#
+# Required GitHub Secrets:
+#   DIGITALOCEAN_ACCESS_TOKEN   - DO personal access token (for doctl + registry)
+#   DO_REGISTRY_NAME            - DO registry name (e.g. myregistry, not the full URL)
+#   DO_SSH_KEY_FINGERPRINT      - SSH key fingerprint to inject into new Droplets
+#   DROPLET_HOST                - Production droplet IP (set after first run)
+#   DROPLET_USER                - SSH user on the droplet (default: root)
+#   DROPLET_SSH_KEY             - Private SSH key for droplet access
+#   DEPLOY_PATH                 - Absolute path on droplet (default: /srv/wordpress)
+#
+# First-run behaviour: if DROPLET_HOST is not set, bootstrap-droplet creates a
+# Droplet named "wordpress-production", prints the IP, then exits non-zero.
+# Add DROPLET_HOST=<ip> to GitHub Secrets and re-run to complete the deploy.
+
+name: Build, Push, and Deploy Image
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DROPLET_NAME: wordpress-production
+  DROPLET_REGION: nyc3
+  DROPLET_SIZE: s-1vcpu-2gb
+  DROPLET_IMAGE: docker-20-04
+
+jobs:
+  bootstrap-droplet:
+    name: Ensure production Droplet exists
+    runs-on: ubuntu-latest
+    outputs:
+      ip: ${{ steps.resolve.outputs.ip }}
+
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2.5.2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Create Droplet if it does not exist
+        id: resolve
+        run: |
+          if [ -n "${{ secrets.DROPLET_HOST }}" ]; then
+            echo "Using existing DROPLET_HOST secret."
+            echo "ip=${{ secrets.DROPLET_HOST }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          EXISTING_IP=$(doctl compute droplet list \
+            --format Name,PublicIPv4 --no-header \
+            | awk -v name="${DROPLET_NAME}" '$1 == name {print $2}')
+
+          if [ -n "$EXISTING_IP" ]; then
+            echo "Droplet '${DROPLET_NAME}' already exists at ${EXISTING_IP}."
+            echo "ip=${EXISTING_IP}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Creating Droplet '${DROPLET_NAME}' ..."
+          doctl compute droplet create "${DROPLET_NAME}" \
+            --size "${DROPLET_SIZE}" \
+            --image "${DROPLET_IMAGE}" \
+            --region "${DROPLET_REGION}" \
+            --ssh-keys "${{ secrets.DO_SSH_KEY_FINGERPRINT }}" \
+            --wait
+
+          sleep 30
+
+          NEW_IP=$(doctl compute droplet list \
+            --format Name,PublicIPv4 --no-header \
+            | awk -v name="${DROPLET_NAME}" '$1 == name {print $2}')
+
+          echo "ip=${NEW_IP}" >> "$GITHUB_OUTPUT"
+          echo ""
+          echo "================================================================"
+          echo "  Droplet created at: ${NEW_IP}"
+          echo "  ACTION REQUIRED: add this GitHub Secret, then re-run:"
+          echo "    DROPLET_HOST = ${NEW_IP}"
+          echo "================================================================"
+          exit 1
+
+  build-push-deploy:
+    name: Build image → push to DO registry → deploy
+    runs-on: ubuntu-latest
+    needs: bootstrap-droplet
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2.5.2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DigitalOcean Container Registry
+        run: doctl registry login --expiry-seconds 600
+
+      - name: Set image tags
+        id: tags
+        run: |
+          REGISTRY="registry.digitalocean.com/${{ secrets.DO_REGISTRY_NAME }}"
+          echo "latest=${REGISTRY}/wordpress:latest" >> "$GITHUB_OUTPUT"
+          echo "sha=${REGISTRY}/wordpress:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push WordPress image
+        uses: docker/build-push-action@v7.1.0
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.tags.outputs.latest }}
+            ${{ steps.tags.outputs.sha }}
+
+      - name: Deploy updated image to Droplet via SSH
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ needs.bootstrap-droplet.outputs.ip }}
+          username: ${{ secrets.DROPLET_USER || 'root' }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            echo "Authenticating with DO registry ..."
+            doctl registry login --expiry-seconds 600
+
+            echo "Pulling new image ..."
+            docker compose --profile ssl pull wordpress
+
+            echo "Restarting wordpress and webserver containers ..."
+            docker compose --profile ssl up -d --force-recreate --no-deps wordpress webserver
+
+            echo "Image deploy complete."
