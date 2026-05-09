@@ -12,7 +12,7 @@
 #   DROPLET_SSH_KEY             - Private SSH key for droplet access
 #   DEPLOY_PATH                 - Absolute path on droplet (default: /srv/wordpress)
 #
-# First-run behaviour: if DROPLET_HOST is not set, bootstrap-droplet creates a
+# First-run behavior: if DROPLET_HOST is not set, bootstrap-droplet creates a
 # Droplet named "wordpress-production", prints the IP, then exits non-zero.
 # Add DROPLET_HOST=<ip> to GitHub Secrets and re-run to complete the deploy.
 
