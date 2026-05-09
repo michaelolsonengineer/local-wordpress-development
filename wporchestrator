@@ -70,6 +70,9 @@ __script_help() { # Required
         nuke:
             nuke. Don't use this unless you are sure
     args:
+        --yes | --non-interactive:
+            Skip all interactive prompts in wp_setup. Requires WORDPRESS_ADMIN_EMAIL,
+            WORDPRESS_ADMIN_USER, and WORDPRESS_ADMIN_PASSWORD in the .env file.
 
 # Side Effects
     None
@@ -90,12 +93,16 @@ __script_parse_opts() { # Optional
   declare -xg _do_first_time_bring_up_flag="false"
   declare -xg _do_enable_ssl_after_first_time_bring_up_flag="false"
   declare -xg force="false"
+  declare -xg yes="false"
 
   # Parse options
   while (($#)); do
     case "${1}" in
     --force)
       force="true"
+      ;;
+    --yes | --non-interactive)
+      yes="true"
       ;;
     install_dependencies)
       info "Running install_dependencies ..."
@@ -116,7 +123,9 @@ __script_parse_opts() { # Optional
       ;;
     wp-setup)
       info "Running wp-setup ..."
-      bash "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
+      local _wp_setup_yes_flag=""
+      [ "${yes}" = "true" ] && _wp_setup_yes_flag="--yes"
+      bash "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env" ${_wp_setup_yes_flag}
       exit 0
       ;;
     restore-from-backup)
@@ -306,7 +315,9 @@ first_time_bring_up() {
   info "All containers up. Run './wporchestrator logs' to inspect individual container output."
 
   info "Running WordPress setup ..."
-  bash "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env"
+  local _wp_setup_yes_flag=""
+  [ "${yes}" = "true" ] && _wp_setup_yes_flag="--yes"
+  bash "${WORKSPACE}/admin/webserver/wp_setup.sh" --env-file "${WORKSPACE}/.env" ${_wp_setup_yes_flag}
 
   # Create a file to indicate first time bring up is complete and avoid
   # running this function again

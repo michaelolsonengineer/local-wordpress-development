@@ -122,15 +122,14 @@ jobs:
             WORDPRESS_ADMIN_USER=${{ secrets.WORDPRESS_ADMIN_USER }}
             WORDPRESS_ADMIN_PASSWORD=${{ secrets.WORDPRESS_ADMIN_PASSWORD }}
             WORDPRESS_ADMIN_EMAIL=${{ secrets.WORDPRESS_ADMIN_EMAIL }}
+            WORDPRESS_BLOG_TITLE=PR Preview #${{ github.event.pull_request.number }}
             ENV
 
             mkdir -p src/{themes,plugins,uploads}
 
-            docker compose up -d --force-recreate --remove-orphans
-
-            # Run WordPress setup non-interactively
+            # Mirrors local development: installs deps, brings up docker, waits for WP, runs wp_setup
             WORDPRESS_BLOG_TITLE="PR Preview #${{ github.event.pull_request.number }}" \
-            bash admin/webserver/wp_setup.sh --env-file .env --yes
+            ./wporchestrator first-time-bring-up --yes
 
             echo "Preview deployed at ${{ steps.droplet.outputs.url }}"
 
