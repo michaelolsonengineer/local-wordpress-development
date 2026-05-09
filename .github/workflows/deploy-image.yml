@@ -21,6 +21,7 @@ name: Build, Push, and Deploy Image
 on:
   push:
     branches: [main, develop]
+  workflow_dispatch:
 
 permissions:
   contents: read

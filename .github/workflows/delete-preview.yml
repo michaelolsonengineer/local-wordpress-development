@@ -12,17 +12,22 @@ name: Delete PR Preview Environment
 on:
   pull_request:
     types: [closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number whose preview Droplet to destroy (e.g. 9)'
+        required: true
 
 permissions:
   contents: read
 
 jobs:
   delete-preview:
-    name: Destroy preview Droplet for PR #${{ github.event.pull_request.number }}
+    name: Destroy preview Droplet for PR #${{ github.event.pull_request.number || inputs.pr_number }}
     runs-on: ubuntu-latest
 
     env:
-      PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
+      PREVIEW_NAME: pr-${{ github.event.pull_request.number || inputs.pr_number }}
 
     steps:
       - name: Install doctl

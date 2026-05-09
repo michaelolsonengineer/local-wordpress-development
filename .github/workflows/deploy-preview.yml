@@ -22,6 +22,15 @@ on:
   pull_request:
     branches: [main, develop]
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to deploy preview for (e.g. 9)'
+        required: true
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: develop
 
 permissions:
   contents: read
@@ -29,11 +38,11 @@ permissions:
 
 jobs:
   deploy-preview:
-    name: Deploy preview for PR #${{ github.event.pull_request.number }}
+    name: Deploy preview for PR #${{ github.event.pull_request.number || inputs.pr_number }}
     runs-on: ubuntu-latest
 
     env:
-      PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
+      PREVIEW_NAME: pr-${{ github.event.pull_request.number || inputs.pr_number }}
 
     steps:
       - name: Checkout repository
@@ -105,8 +114,8 @@ jobs:
 
             cd "${REPO_DIR}"
             git fetch origin
-            git checkout "${{ github.head_ref }}"
-            git reset --hard "origin/${{ github.head_ref }}"
+            git checkout "${{ github.head_ref || inputs.branch }}"
+            git reset --hard "origin/${{ github.head_ref || inputs.branch }}"
 
             # Write a minimal .env for preview (no SSL, IP as domain)
             cat > .env <<ENV
@@ -123,7 +132,7 @@ jobs:
             WORDPRESS_ADMIN_USER=${{ secrets.WORDPRESS_ADMIN_USER }}
             WORDPRESS_ADMIN_PASSWORD=${{ secrets.WORDPRESS_ADMIN_PASSWORD }}
             WORDPRESS_ADMIN_EMAIL=${{ secrets.WORDPRESS_ADMIN_EMAIL }}
-            WORDPRESS_BLOG_TITLE="PR Preview #${{ github.event.pull_request.number }}"
+            WORDPRESS_BLOG_TITLE="PR Preview #${{ github.event.pull_request.number || inputs.pr_number }}"
             ENV
 
             mkdir -p src/{themes,plugins,uploads}
@@ -149,7 +158,7 @@ jobs:
                 `| **URL** | ${{ steps.droplet.outputs.url }} |`,
                 `| **WP Admin** | ${{ steps.droplet.outputs.url }}/wp-login.php |`,
                 `| **Droplet** | \`${{ env.PREVIEW_NAME }}\` |`,
-                `| **Branch** | \`${{ github.head_ref }}\` |`,
+                `| **Branch** | \`${{ github.head_ref || inputs.branch }}\` |`,
                 '',
                 '_This preview Droplet will be destroyed automatically when the PR is closed._'
               ].join('\n')
