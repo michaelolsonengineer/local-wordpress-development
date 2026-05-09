@@ -137,8 +137,12 @@ jobs:
 
             mkdir -p src/{themes,plugins,uploads}
 
+            # Tear down any leftover containers from a previous run on this Droplet
+            docker compose down --remove-orphans 2>/dev/null || true
+
             # Mirrors local development: installs deps, brings up docker, waits for WP, runs wp_setup
-            TERM=dumb ./wporchestrator first-time-bring-up --yes
+            # --force removes .first_time_bring_up_complete so setup re-runs cleanly
+            TERM=dumb ./wporchestrator first-time-bring-up --force --yes
 
             echo "Preview deployed at ${{ steps.droplet.outputs.url }}"
 
