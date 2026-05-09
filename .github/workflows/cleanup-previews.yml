@@ -1,0 +1,56 @@
+# cleanup-previews.yml
+#
+# Daily scheduled job that destroys any pr-* preview Droplets older than 24 hours.
+# Prevents orphaned Droplets from accumulating cost if delete-preview.yml missed them
+# (e.g. race condition, workflow failure, manually opened PR never closed).
+#
+# Also runs on workflow_dispatch for manual triggered cleanup.
+#
+# Required GitHub Secrets:
+#   DIGITALOCEAN_ACCESS_TOKEN   - DO personal access token
+
+name: Cleanup Stale Preview Droplets
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 04:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cleanup-previews
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Destroy preview Droplets older than 24h
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2.5.2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Destroy stale pr-* Droplets
+        run: |
+          CUTOFF=$(date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+            || date -u -v-24H '+%Y-%m-%dT%H:%M:%SZ')  # GNU date / BSD date fallback
+
+          echo "Destroying pr-* Droplets created before ${CUTOFF} ..."
+
+          doctl compute droplet list \
+            --format ID,Name,Created --no-header \
+            | awk '$2 ~ /^pr-[0-9]+$/ {print $1, $2, $3}' \
+            | while read -r ID NAME CREATED; do
+                if [[ "${CREATED}" < "${CUTOFF}" ]]; then
+                  echo "  Destroying '${NAME}' (ID: ${ID}, created: ${CREATED}) ..."
+                  doctl compute droplet delete "${ID}" --force
+                else
+                  echo "  Keeping '${NAME}' (ID: ${ID}, created: ${CREATED}) — within 24h window."
+                fi
+              done
+
+          echo "Cleanup complete."
