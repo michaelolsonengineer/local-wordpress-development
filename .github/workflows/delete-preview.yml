@@ -41,14 +41,24 @@ jobs:
 
       - name: Destroy preview Droplet
         run: |
-          DROPLET_ID=$(doctl compute droplet list \
-            --format ID,Name --no-header \
-            | awk -v name="${PREVIEW_NAME}" '$2 == name {print $1}')
+          # Retry for up to 5 minutes — the Droplet may still be provisioning
+          # if deploy-preview and delete-preview raced (PR closed during deploy).
+          DROPLET_ID=""
+          for i in $(seq 1 10); do
+            DROPLET_ID=$(doctl compute droplet list \
+              --format ID,Name --no-header \
+              | awk -v name="${PREVIEW_NAME}" '$2 == name {print $1}')
+            if [ -n "$DROPLET_ID" ]; then
+              break
+            fi
+            echo "Attempt ${i}/10: no Droplet found for '${PREVIEW_NAME}', waiting 30s..."
+            sleep 30
+          done
 
           if [ -n "$DROPLET_ID" ]; then
             echo "Destroying Droplet '${PREVIEW_NAME}' (ID: ${DROPLET_ID}) ..."
             doctl compute droplet delete "$DROPLET_ID" --force
             echo "Droplet destroyed."
           else
-            echo "No Droplet found for '${PREVIEW_NAME}' — nothing to destroy."
+            echo "No Droplet found for '${PREVIEW_NAME}' after retries — nothing to destroy."
           fi
