@@ -1,0 +1,76 @@
+# deploy-image.yml
+#
+# Builds the WordPress Docker image, pushes it to the DigitalOcean Container
+# Registry, then deploys the new image to the production Droplet.
+#
+# Required GitHub Secrets:
+#   DIGITALOCEAN_ACCESS_TOKEN   - DO personal access token (for doctl + registry)
+#   DO_REGISTRY_NAME            - DO registry name (e.g. myregistry, not the full URL)
+#   DROPLET_HOST                - Production droplet IP or hostname
+#   DROPLET_USER                - SSH user on the droplet (e.g. root)
+#   DROPLET_SSH_KEY             - Private SSH key for droplet access
+#   DEPLOY_PATH                 - Absolute path on droplet (e.g. /srv/wordpress)
+
+name: Build, Push, and Deploy Image
+
+on:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  build-push-deploy:
+    name: Build image → push to DO registry → deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DigitalOcean Container Registry
+        run: doctl registry login --expiry-seconds 600
+
+      - name: Set image tags
+        id: tags
+        run: |
+          REGISTRY="registry.digitalocean.com/${{ secrets.DO_REGISTRY_NAME }}"
+          echo "latest=${REGISTRY}/wordpress:latest" >> "$GITHUB_OUTPUT"
+          echo "sha=${REGISTRY}/wordpress:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push WordPress image
+        uses: docker/build-push-action@v6.5.0
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.tags.outputs.latest }}
+            ${{ steps.tags.outputs.sha }}
+
+      - name: Deploy updated image to Droplet via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            echo "Authenticating with DO registry ..."
+            doctl registry login --expiry-seconds 600
+
+            echo "Pulling new image ..."
+            docker compose --profile ssl pull wordpress
+
+            echo "Restarting wordpress and webserver containers ..."
+            docker compose --profile ssl up -d --force-recreate --no-deps wordpress webserver
+
+            echo "Image deploy complete."

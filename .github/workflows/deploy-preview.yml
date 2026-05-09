@@ -1,0 +1,156 @@
+# deploy-preview.yml
+#
+# Spins up an ephemeral DigitalOcean Droplet for each pull request so the
+# changes can be reviewed at a live URL before merging. The Droplet is named
+# after the PR number (e.g. pr-42) and is destroyed by delete-preview.yml
+# when the PR is closed.
+#
+# Required GitHub Secrets:
+#   DIGITALOCEAN_ACCESS_TOKEN   - DO personal access token
+#   DO_SSH_KEY_FINGERPRINT      - Fingerprint of the SSH key to inject into new Droplets
+#   DROPLET_SSH_KEY             - Matching private key (used by appleboy/ssh-action)
+#   DATABASE_USER               - Copied from your local .env
+#   DATABASE_PASSWORD           - Copied from your local .env
+#   DATABASE_ROOT_PASSWORD      - Copied from your local .env
+#   WORDPRESS_ADMIN_USER        - Copied from your local .env
+#   WORDPRESS_ADMIN_PASSWORD    - Copied from your local .env
+#   WORDPRESS_ADMIN_EMAIL       - Copied from your local .env
+
+name: PR Preview Environment
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  deploy-preview:
+    name: Deploy preview for PR #${{ github.event.pull_request.number }}
+    runs-on: ubuntu-latest
+
+    env:
+      PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Create preview Droplet if it does not exist
+        id: droplet
+        run: |
+          EXISTING_IP=$(doctl compute droplet list \
+            --format Name,PublicIPv4 --no-header \
+            | awk -v name="${PREVIEW_NAME}" '$1 == name {print $2}')
+
+          if [ -z "$EXISTING_IP" ]; then
+            echo "Creating Droplet: ${PREVIEW_NAME} ..."
+            doctl compute droplet create "${PREVIEW_NAME}" \
+              --size s-1vcpu-1gb \
+              --image docker-20-04 \
+              --region nyc3 \
+              --ssh-keys "${{ secrets.DO_SSH_KEY_FINGERPRINT }}" \
+              --wait
+            # Give cloud-init a moment to finish
+            sleep 30
+          else
+            echo "Droplet ${PREVIEW_NAME} already exists at ${EXISTING_IP}."
+          fi
+
+          IP=$(doctl compute droplet list \
+            --format Name,PublicIPv4 --no-header \
+            | awk -v name="${PREVIEW_NAME}" '$1 == name {print $2}')
+
+          echo "ip=${IP}" >> "$GITHUB_OUTPUT"
+          echo "url=http://${IP}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy preview to Droplet
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.droplet.outputs.ip }}
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          # Retry a few times — the droplet may still be booting
+          retry_count: 5
+          retry_delay: 10
+          script: |
+            set -e
+            REPO_DIR="/srv/wordpress-preview"
+
+            if [ ! -d "${REPO_DIR}/.git" ]; then
+              git clone "https://github.com/${{ github.repository }}" "${REPO_DIR}"
+            fi
+
+            cd "${REPO_DIR}"
+            git fetch origin
+            git checkout "${{ github.head_ref }}"
+            git reset --hard "origin/${{ github.head_ref }}"
+
+            # Write a minimal .env for preview (no SSL, IP as domain)
+            cat > .env <<ENV
+            ENVIRONMENT=preview
+            ENABLE_SSL=false
+            ENABLE_WWW=false
+            DOMAIN_NAME=${{ steps.droplet.outputs.ip }}
+            CONTAINER_NAME=preview
+            DATABASE_NAME=wordpress
+            DATABASE_PORT=3306
+            DATABASE_USER=${{ secrets.DATABASE_USER }}
+            DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD }}
+            DATABASE_ROOT_PASSWORD=${{ secrets.DATABASE_ROOT_PASSWORD }}
+            WORDPRESS_ADMIN_USER=${{ secrets.WORDPRESS_ADMIN_USER }}
+            WORDPRESS_ADMIN_PASSWORD=${{ secrets.WORDPRESS_ADMIN_PASSWORD }}
+            WORDPRESS_ADMIN_EMAIL=${{ secrets.WORDPRESS_ADMIN_EMAIL }}
+            ENV
+
+            mkdir -p src/{themes,plugins,uploads}
+
+            docker compose up -d --force-recreate --remove-orphans
+
+            echo "Preview deployed at ${{ steps.droplet.outputs.url }}"
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: [
+                '🚀 **Preview environment deployed!**',
+                '',
+                `| | |`,
+                `|---|---|`,
+                `| **URL** | ${{ steps.droplet.outputs.url }} |`,
+                `| **WP Admin** | ${{ steps.droplet.outputs.url }}/wp-login.php |`,
+                `| **Droplet** | \`${{ env.PREVIEW_NAME }}\` |`,
+                `| **Branch** | \`${{ github.head_ref }}\` |`,
+                '',
+                '_This preview Droplet will be destroyed automatically when the PR is closed._'
+              ].join('\n')
+            })
+
+      - name: Comment on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: [
+                '❌ **Preview deployment failed.**',
+                '',
+                `[View workflow logs](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+              ].join('\n')
+            })

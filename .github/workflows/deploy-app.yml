@@ -1,0 +1,56 @@
+# deploy-app.yml
+#
+# Deploys the latest code to the production DigitalOcean Droplet on every push
+# to main or develop. Uses SSH to pull the repo and restart containers in-place.
+#
+# Required GitHub Secrets:
+#   DIGITALOCEAN_ACCESS_TOKEN   - DO personal access token (for doctl)
+#   DROPLET_HOST                - Production droplet IP or hostname
+#   DROPLET_USER                - SSH user on the droplet (e.g. root)
+#   DROPLET_SSH_KEY             - Private SSH key for droplet access
+#   DEPLOY_PATH                 - Absolute path on droplet (e.g. /srv/wordpress)
+
+name: Deploy App
+
+on:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to production Droplet
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Verify target Droplet is reachable
+        run: |
+          doctl compute droplet list --format Name,PublicIPv4,Status
+
+      - name: Deploy to Droplet via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            echo "Pulling latest changes from ${{ github.ref_name }} ..."
+            git pull origin ${{ github.ref_name }}
+
+            echo "Restarting containers ..."
+            docker compose --profile ssl up -d --force-recreate --remove-orphans
+
+            echo "Deploy complete."
