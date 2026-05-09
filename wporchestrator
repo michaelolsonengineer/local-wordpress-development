@@ -312,6 +312,10 @@ first_time_bring_up() {
   # Check if wordpress files were created
   [ -e "${WORKSPACE}/src" ] ||
     error "WordPress src bind-mount not found — did the volume fail to populate?"
+
+  # Fix ownership so the wordpress container (www-data) can write to the bind-mount
+  info "Setting ownership of src/ to www-data ..."
+  sudo chown -R www-data:www-data "${WORKSPACE}/src" || true
   info "All containers up. Run './wporchestrator logs' to inspect individual container output."
 
   info "Running WordPress setup ..."
