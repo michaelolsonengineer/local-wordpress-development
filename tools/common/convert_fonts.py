@@ -35,8 +35,8 @@ except ModuleNotFoundError:
 
 # Map of output flavor → file extension  (None = plain TTF binary)
 VARIANTS = [
-    (None,    ".ttf"),
-    ("woff",  ".woff"),
+    (None, ".ttf"),
+    ("woff", ".woff"),
     ("woff2", ".woff2"),
 ]
 
