@@ -128,6 +128,10 @@ jobs:
 
             docker compose up -d --force-recreate --remove-orphans
 
+            # Run WordPress setup non-interactively
+            WORDPRESS_BLOG_TITLE="PR Preview #${{ github.event.pull_request.number }}" \
+            bash admin/webserver/wp_setup.sh --env-file .env --yes
+
             echo "Preview deployed at ${{ steps.droplet.outputs.url }}"
 
       - name: Comment preview URL on PR

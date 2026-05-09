@@ -45,6 +45,10 @@ __script_help() { # Required
 # Inputs:
     --env-file:
         the configuration file for reading default staging environment configuration information
+    --yes | --non-interactive:
+        skip all interactive prompts; requires WORDPRESS_ADMIN_EMAIL, WORDPRESS_ADMIN_USER,
+        and WORDPRESS_ADMIN_PASSWORD to already be set in the .env file or environment.
+        WORDPRESS_BLOG_TITLE may also be set; defaults to "WordPress" if absent.
 
 EOM
 
@@ -66,6 +70,7 @@ __script_parse_opts() { # Optional
   declare -xg WORDPRESS_ADMIN_USER
   declare -xg WORDPRESS_ADMIN_PASSWORD
   declare -xg wordpress_blog_title
+  declare -xg NON_INTERACTIVE=false
   # shellcheck disable=SC2155
   declare -xg temp_dir=$(mktemp -d)
 
@@ -77,6 +82,9 @@ __script_parse_opts() { # Optional
     --env-file)
       shift
       environment_file="${1}"
+      ;;
+    --yes | --non-interactive)
+      NON_INTERACTIVE=true
       ;;
     -h | --help | help)
       __script_help
@@ -176,24 +184,35 @@ __script_init() { # Optional
     done
   }
 
-  prompt_user_for_wordpress_admin_account
-
-  while true; do
-    echo -en "\n"
-    info "Note: admin and title details will be prompted for again if dismissed. "
-    read -rp "Is the information correct? [Y/n] " confirmation
-    confirmation=${confirmation,,}
-    if [[ "${confirmation}" =~ ^(yes|y)$ ]] || [ -z "${confirmation}" ]; then
-      break
-    else
-      unset WORDPRESS_ADMIN_EMAIL
-      unset WORDPRESS_ADMIN_USER
-      unset WORDPRESS_ADMIN_PASSWORD
-      unset wordpress_blog_title
-
-      prompt_user_for_wordpress_admin_account
+  if [ "${NON_INTERACTIVE}" = "true" ]; then
+    # In non-interactive mode, values must already be set (from .env or environment).
+    # Pull blog title from env if not set.
+    wordpress_blog_title="${wordpress_blog_title:-${WORDPRESS_BLOG_TITLE:-WordPress}}"
+    if [ -z "${WORDPRESS_ADMIN_EMAIL-}" ] || [ -z "${WORDPRESS_ADMIN_USER-}" ] || [ -z "${WORDPRESS_ADMIN_PASSWORD-}" ]; then
+      error "--yes/--non-interactive requires WORDPRESS_ADMIN_EMAIL, WORDPRESS_ADMIN_USER, and WORDPRESS_ADMIN_PASSWORD to be set in the environment or .env file."
+      exit 1
     fi
-  done
+    info "Non-interactive mode: using credentials from environment."
+  else
+    prompt_user_for_wordpress_admin_account
+
+    while true; do
+      echo -en "\n"
+      info "Note: admin and title details will be prompted for again if dismissed. "
+      read -rp "Is the information correct? [Y/n] " confirmation
+      confirmation=${confirmation,,}
+      if [[ "${confirmation}" =~ ^(yes|y)$ ]] || [ -z "${confirmation}" ]; then
+        break
+      else
+        unset WORDPRESS_ADMIN_EMAIL
+        unset WORDPRESS_ADMIN_USER
+        unset WORDPRESS_ADMIN_PASSWORD
+        unset wordpress_blog_title
+
+        prompt_user_for_wordpress_admin_account
+      fi
+    done
+  fi
 
   info "Ready to add admin user ..."
 }
