@@ -12,19 +12,21 @@ services:
         healthcheck:
             test:
                 [
-                    'CMD',
-                    'mysqladmin',
-                    'ping',
-                    '-h',
-                    'localhost',
-                    '-u',
-                    'root',
-                    '-p$$DATABASE_ROOT_PASSWORD',
+                    "CMD",
+                    "mysqladmin",
+                    "ping",
+                    "-h",
+                    "localhost",
+                    "-u",
+                    "root",
+                    "-p$$DATABASE_ROOT_PASSWORD",
                 ]
+            interval: 5s
             timeout: 20s
             retries: 10
+            start_period: 30s
         ports:
-            - '${DATABASE_PORT}:${DATABASE_PORT}'
+            - "${DATABASE_PORT}:${DATABASE_PORT}"
         volumes:
             - dbdata_volume:/var/lib/mysql
         networks:
@@ -38,25 +40,31 @@ services:
         environment:
             PMA_HOST: database # use the same name as database service in docker-compose.yml
             PMA_PORT: ${DATABASE_PORT}
-            MYSQL_ROOT_PASSWORD: '${DATABASE_ROOT_PASSWORD}'
+            MYSQL_ROOT_PASSWORD: "${DATABASE_ROOT_PASSWORD}"
         ports:
-            - '8081:80'
+            - "8081:80"
         networks:
             - app-network
 
     # application
     wordpress:
         depends_on:
-            - database
+            database:
+                condition: service_healthy
         container_name: ${CONTAINER_NAME}-wordpress
         image: wordpress:6.5.2-fpm-alpine
         restart: unless-stopped
         env_file: .env
         environment:
             WORDPRESS_DB_HOST: database:${DATABASE_PORT} # use the same name as database service in docker-compose.yml
-            WORDPRESS_DB_NAME: '${DATABASE_NAME}'
-            WORDPRESS_DB_USER: '${DATABASE_USER}'
-            WORDPRESS_DB_PASSWORD: '${DATABASE_PASSWORD}'
+            WORDPRESS_DB_NAME: "${DATABASE_NAME}"
+            WORDPRESS_DB_USER: "${DATABASE_USER}"
+            WORDPRESS_DB_PASSWORD: "${DATABASE_PASSWORD}"
+            WORDPRESS_TABLE_PREFIX: "${WORDPRESS_TABLE_PREFIX:-wp_}"
+            # The wordpress-cli image ships a MariaDB client. MySQL 8.0 enables TLS with a
+            # self-signed cert by default; the MariaDB client rejects it.
+            # MYSQL_CLIENT_FLAGS=2048 = MYSQLI_CLIENT_SSL_DONT_VERIFY_SERVER_CERT
+            MYSQL_CLIENT_FLAGS: 2048
         volumes:
             # - type: volume
             #   source: wordpress_volume
@@ -64,23 +72,32 @@ services:
             #   read_only: false
             - wordpress_volume:/var/www/html
             - ./src:/var/www/html/wp-content:rw
+            - ./wordpress/php.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
         expose:
-            - '9000' # expose port 9000 to the webserver for fastcgi
+            - "9000" # expose port 9000 to the webserver for fastcgi
         networks:
             - app-network
 
     # Suggested to run: alias wp="docker compose run --rm wordpress-cli"
     wordpress-cli:
         depends_on:
-            - database
+            database:
+                condition: service_healthy
+            wordpress:
+                condition: service_started
         container_name: ${CONTAINER_NAME}-wordpress-cli
         image: wordpress:cli-2.11.0
         env_file: .env
         environment:
-            WORDPRESS_DB_USER: '${DATABASE_USER}'
-            WORDPRESS_DB_PASSWORD: '${DATABASE_PASSWORD}'
+            WORDPRESS_DB_HOST: "database:${DATABASE_PORT}"
+            WORDPRESS_DB_NAME: "${DATABASE_NAME}"
+            WORDPRESS_DB_USER: "${DATABASE_USER}"
+            WORDPRESS_DB_PASSWORD: "${DATABASE_PASSWORD}"
+            WORDPRESS_TABLE_PREFIX: "${WORDPRESS_TABLE_PREFIX:-wp_}"
+            MYSQL_CLIENT_FLAGS: 2048
         volumes:
             - wordpress_volume:/var/www/html
+            - ./src:/var/www/html/wp-content:rw
         links:
             - database
         networks:
@@ -88,7 +105,8 @@ services:
 
     webserver:
         depends_on:
-            - wordpress
+            wordpress:
+                condition: service_started
         container_name: ${CONTAINER_NAME}-webserver
         image: nginx:1.19-alpine
         restart: unless-stopped
@@ -101,34 +119,45 @@ services:
         environment:
             NGINX_HOST: ${DOMAIN_NAME}
             WORDPRESS_HOST: ${CONTAINER_NAME}-wordpress
+            ENABLE_SSL: ${ENABLE_SSL:-false}
+            ENABLE_WWW: ${ENABLE_WWW:-false}
         ports:
-            - '80:80'
-            - '443:443'
+            - "80:80"
+            - "443:443"
+        entrypoint: ["/bin/sh", "/docker-entrypoint-wrapper.sh"]
+        command: ["nginx", "-g", "daemon off;"]
         volumes:
             - wordpress_volume:/var/www/html
-            - ./nginx/templates:/etc/nginx/templates
+            - ./src:/var/www/html/wp-content:ro
+            # Available templates (read-only). The wrapper script picks the right one at boot.
+            - ./nginx/templates:/etc/nginx/templates-available:ro
             - ./nginx/nginx-conf:/etc/nginx/conf.d
             - certbot-etc_volume:/etc/letsencrypt
+            - ./nginx/docker-entrypoint-wrapper.sh:/docker-entrypoint-wrapper.sh:ro
         networks:
             - app-network
 
     certbot:
+        profiles:
+            - ssl # only starts with: docker compose --profile ssl up -d
         depends_on:
             - webserver
         image: certbot/certbot
         container_name: ${CONTAINER_NAME}-certbot
         env_file: .env
         environment:
+            # DOMAIN_NAME will be set to PRODUCTION_DOMAIN by wporchestrator before this service runs
             DOMAIN_NAME: ${DOMAIN_NAME}
+            PRODUCTION_DOMAIN: ${PRODUCTION_DOMAIN}
             WORDPRESS_ADMIN_EMAIL: ${WORDPRESS_ADMIN_EMAIL}
             CERTBOT_STAGING_FLAG: ${CERTBOT_STAGING_FLAG}
         volumes:
             - certbot-etc_volume:/etc/letsencrypt
             - wordpress_volume:/var/www/html
 
-        #     # Uncomment when a you have domain to register available.
-        #     # command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email ${CERTBOT_STAGING_FLAG} -d ${DOMAIN_NAME} -d www.${DOMAIN_NAME}
-        # # uncomment the below command for if your domain is does not support www subdomain and comment out to use the above command instead otherwise generally for production.
+        # wporchestrator swaps DOMAIN_NAME → PRODUCTION_DOMAIN in .env before running certbot,
+        # so by the time this command executes ${DOMAIN_NAME} already equals the real public domain.
+        # --staging flag is removed by wporchestrator for production certs.
         command: certonly --webroot --webroot-path=/var/www/html --email ${WORDPRESS_ADMIN_EMAIL} --agree-tos --no-eff-email ${CERTBOT_STAGING_FLAG} -d ${DOMAIN_NAME}
 
         networks:

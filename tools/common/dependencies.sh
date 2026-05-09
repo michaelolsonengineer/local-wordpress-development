@@ -126,13 +126,14 @@ setup_docker() {
   docker_apt_repo="deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
     $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable"
 
-  # Check if the repository is already added and add it if not
-  if ! grep -r -q -F --include "*.list" "${docker_apt_search_pattern}" /etc/apt/sources.list.d/ 2>/dev/null; then
+  # Check if the repository is already added and add it if not.
+  # Search both *.list and *.sources (deb822 format used by Ubuntu 24.04+).
+  if ! grep -r -q -F --include "*.list" --include "*.sources" "${docker_apt_search_pattern}" /etc/apt/sources.list.d/ 2>/dev/null && \
+     ! grep -q -F "${docker_apt_search_pattern}" /etc/apt/sources.list 2>/dev/null; then
     log INFO "Adding Docker repository to Apt sources"
-    sudo add-apt-repository "${docker_apt_repo}"
+    # add-apt-repository no longer accepts inline deb lines on Ubuntu 24.04+; use tee instead.
+    echo "${docker_apt_repo}" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
     sudo apt update
-    # docker suggests using the following command to add the repository, but using linux official command above
-    # echo "${docker_apt_repo}" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
   else
     log INFO "Docker repository already exists in apt-repository sources"
   fi

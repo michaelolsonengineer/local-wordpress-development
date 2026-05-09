@@ -50,6 +50,21 @@ log() {
   esac
 }
 
+# ===== run =====
+# Description: Print a command before executing it, without enabling set -x globally.
+#              Outputs the command to stderr in the same style as set -x ("+ cmd args").
+# Arguments:
+#   $@: The command and its arguments to execute
+# Usage:
+#   run docker compose up -d
+# Output:
+#   + docker compose up -d
+#   (then executes the command)
+run() {
+  (echo >&2 -e "${BOLD}+${STYLE_RESET} $*")
+  "$@"
+}
+
 # ===== info =====
 # Description: Prints info message to stderr, info header in blue followed by message
 # Arguments:

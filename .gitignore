@@ -3,6 +3,10 @@
 .enable_ssl_after_first_time_bring_up_complete
 .first_time_bring_up_complete
 
+# Ignore log files
+*.log
+/log/
+
 # These are generated files on the server, can't make this read-only on the docker, and but these should not be excluded from git
 nginx/nginx-conf/default*
 
@@ -94,3 +98,15 @@ devel/
 
 ## Pyenv python version file
 .python-version
+
+# WordPress active development sources
+# Track themes and plugins, but never commit uploaded media
+src/uploads/*
+!src/uploads/.gitkeep
+
+# WordPress container config — track the php.ini but not generated files
+!wordpress/
+!wordpress/php.ini
+
+# Ignore the downloaded wp-cli tool
+admin/webserver/wp
