@@ -72,15 +72,28 @@ jobs:
           echo "ip=${IP}" >> "$GITHUB_OUTPUT"
           echo "url=http://${IP}" >> "$GITHUB_OUTPUT"
 
+      - name: Wait for SSH to be ready
+        run: |
+          IP="${{ steps.droplet.outputs.ip }}"
+          echo "Waiting for SSH on ${IP}:22 ..."
+          for i in $(seq 1 30); do
+            if nc -z -w5 "${IP}" 22 2>/dev/null; then
+              echo "SSH is up after ${i} attempts."
+              exit 0
+            fi
+            echo "  attempt ${i}/30 — not ready yet, sleeping 10s..."
+            sleep 10
+          done
+          echo "Timed out waiting for SSH." && exit 1
+
       - name: Deploy preview to Droplet
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ steps.droplet.outputs.ip }}
           username: root
           key: ${{ secrets.DROPLET_SSH_KEY }}
-          # Retry a few times — the droplet may still be booting
-          retry_count: 5
-          retry_delay: 10
+          retry_count: 3
+          retry_delay: 5
           script: |
             set -e
             REPO_DIR="/srv/wordpress-preview"
