@@ -313,9 +313,12 @@ first_time_bring_up() {
   [ -e "${WORKSPACE}/src" ] ||
     error "WordPress src bind-mount not found — did the volume fail to populate?"
 
-  # Fix ownership so the wordpress container (www-data) can write to the bind-mount
-  info "Setting ownership of src/ to www-data ..."
-  sudo chown -R www-data:www-data "${WORKSPACE}/src" || true
+  # Fix ownership so both the wordpress container (www-data) and the local developer can write.
+  # www-data owns the files; the developer's group gets group-write via setgid + g+w.
+  info "Setting ownership of src/ to www-data:$(id -gn) with group-write ..."
+  sudo chown -R www-data:"$(id -gn)" "${WORKSPACE}/src" || true
+  sudo chmod -R g+w "${WORKSPACE}/src" || true
+  sudo find "${WORKSPACE}/src" -type d -exec chmod g+s {} + || true
   info "All containers up. Run './wporchestrator logs' to inspect individual container output."
 
   info "Running WordPress setup ..."
