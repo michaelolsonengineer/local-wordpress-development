@@ -1,72 +1,157 @@
 # local-wordpress-development
 
-Another Docker Configuration for Local WordPress development
+A Docker-based local WordPress development environment with full CI/CD for DigitalOcean deployments.
 
-## Installation - In progress
+## Features
 
-#### Prerequisites
+- **One-command setup** via `wporchestrator` — installs dependencies, brings up containers, configures WordPress
+- **Production DB restore** — import UpdraftPlus backups, auto-detect table prefix, rewrite URLs, fetch custom fonts
+- **PR Preview Environments** — ephemeral DigitalOcean Droplets spun up per pull request, destroyed on PR close
+- **SSL support** via Let's Encrypt (certbot) for production deployments
+- **Non-interactive / CI mode** — `--yes` flag skips all prompts for automated runs
 
--   Install Git
-    -   if Linux and debian/ubuntu
-        -   `sudo apt install git`
--   Install [Docker](https://docs.docker.com/)
--   Install [Docker Compose](https://docs.docker.com/compose/)
--   Install [mkcert](https://github.com/FiloSottile/mkcert)
-    -   If Ubuntu/Debian,
-        -   `sudo apt install golang` is needed to build to install mkcert
--   Install [yq](https://github.com/mikefarah/yq)
-    -   If Ubuntu/Debian,
-        -   sudo apt-get update && sudo apt-get install -y yq
+---
 
-#### Initialization
+## Prerequisites
 
--   Clone [this repository](https://github.com/michaelolsonengineer/local-wordpress-development)
--   Copy env.example to .env on host environment at root of workspace of desired server
--   Edit newly created .env with desired secret credentials
--   NOTE: if local development only, then create self-signed certificates
+All dependencies are installed automatically by `./wporchestrator install_dependencies` on Ubuntu/Debian.
 
-#### Build/Run
+Manual install if preferred:
+- [Docker](https://docs.docker.com/) + [Docker Compose plugin](https://docs.docker.com/compose/)
+- `yq` — `sudo apt-get install -y yq` (Ubuntu 24.04+) or `snap install yq`
+- `mysql-client` — `sudo apt-get install -y mysql-client`
+- `git`, `curl`, `wget`, `jq` — `sudo apt-get install -y git curl wget jq`
 
--   if first time
-    -   `docker compose up --build`
--   else
-    -   `docker compose up`
+---
 
-## Troubleshooting and Helpful Tips
+## Quick Start (Local Development)
 
--   Do not edit docker configurations while docker is running.
+```bash
+# 1. Clone the repo
+git clone https://github.com/michaelolsonengineer/local-wordpress-development
+cd local-wordpress-development
 
-    -   Bring system down before editing. It can cause docker compose to have difficulty finding containers for example.
+# 2. Configure environment
+cp env.example .env
+# Edit .env with your credentials (DOMAIN_NAME, DATABASE_*, WORDPRESS_ADMIN_*, etc.)
 
--   Make sure to stop any local running databases that might conflict with databases defined in the docker compose files.
+# 3. First-time bring-up: installs deps, starts containers, runs WordPress setup
+./wporchestrator first-time-bring-up
+```
 
-    -   i.e. `sudo systemctl stop mysql`
+WordPress will be available at `http://<DOMAIN_NAME>` (or `http://localhost` for local dev).
 
-#### Know some basic docker commands
+---
 
--   `docker container ls`
-    -   list containers
--   `docker volume ls`
-    -   list volumes
--   `docker log <CONTAINER_NAME>`
-    -   show system logs till now of CONTAINER_NAME
--   `docker ps -a`
-    -   show any existing running containers
--   `docker volume prune`
-    -   remove any dangling volumes if existing
--   `docker rm $(docker ps -a -f status=exited -q)`
-    -   remove any exited containers if existing
--   If you are needing to really nuke, know how to do that with docker and/or make the scripts
-    -   `docker volume rm $DIRECTORY_NAME_wordpress $DIRECTORY_NAME_dbdata`
-    -   i.e `docker volume rm wp_wordpress wp_dbdata`
+## wporchestrator Commands
+
+| Command | Description |
+|---|---|
+| `first-time-bring-up [--yes]` | Install deps, start containers, run WordPress setup |
+| `install_dependencies` | Install system packages (Docker, mysql-client, yq, etc.) |
+| `wp-setup [--yes]` | Run WordPress configuration (title, admin user, plugins, permalinks) |
+| `restore-from-backup <file>` | Restore an UpdraftPlus `.db.gz` backup, fix URLs, fetch fonts |
+| `fix-urls` | Reset `siteurl`/`home` to localhost after a production DB restore |
+| `enable-ssl-after-first-time-bring-up` | Obtain Let's Encrypt certs and switch site to HTTPS |
+| `logs` | Tail logs from all Docker Compose services |
+| `nuke` | Destroy all containers and volumes (**destructive**) |
+
+`--yes` / `--non-interactive` — skips all interactive prompts; requires credentials set in `.env`.
+
+---
+
+## Production DB Restore
+
+```bash
+./wporchestrator restore-from-backup '/path/to/backup_2026-04-26-db.gz'
+```
+
+This will:
+1. Copy the backup into the database container
+2. Import it (directly via `mysql`, bypassing WP-CLI TLS issues with MySQL 8)
+3. Auto-detect and write the table prefix to `.env`
+4. Rewrite production domain URLs to `http://localhost` in `options` and `postmeta`
+5. Download any custom fonts referenced in `postmeta`
+6. Create/update the local admin user from `.env` credentials
+7. Report the AIOS custom login slug if All-In-One Security is active
+
+---
+
+## Enabling SSL (Production)
+
+```bash
+# After first-time-bring-up with a real domain pointed at the server:
+./wporchestrator enable-ssl-after-first-time-bring-up
+```
+
+Requires `PRODUCTION_DOMAIN` set in `.env`.
+
+---
+
+## CI/CD — GitHub Actions
+
+Four workflows are included in `.github/workflows/`:
+
+### `deploy-preview.yml` — PR Preview Environments
+- Triggers on pull requests to `main` or `develop`
+- Creates an ephemeral DigitalOcean Droplet named `pr-<N>` (Ubuntu 24.04, Docker pre-installed)
+- Clones the branch, writes a minimal `.env`, runs `./wporchestrator first-time-bring-up --yes`
+- Comments the live preview URL on the PR
+- Destroys the Droplet when the PR is closed (`delete-preview.yml`)
+
+### `deploy-app.yml` — Deploy to Production Droplet
+- Triggers on push to `main` or `develop`
+- SSHes into `DROPLET_HOST`, pulls latest, runs `docker compose up -d`
+
+### `deploy-image.yml` — Build & Push Docker Image
+- Builds a custom WordPress image, pushes to DigitalOcean Container Registry
+- SSHes into Droplet, pulls new image, restarts services
+
+### `delete-preview.yml` — Destroy PR Preview
+- Triggers when a PR is closed
+- Finds and destroys the `pr-<N>` Droplet via `doctl`
+
+### Required GitHub Secrets
+
+| Secret | Description |
+|---|---|
+| `DIGITALOCEAN_ACCESS_TOKEN` | DO personal access token |
+| `DO_SSH_KEY_FINGERPRINT` | Fingerprint of SSH key registered in DO account |
+| `DROPLET_SSH_KEY` | Private key matching `DO_SSH_KEY_FINGERPRINT` |
+| `DROPLET_USER` | SSH user on the Droplet (default: `root`) |
+| `DEPLOY_PATH` | Path on Droplet to clone repo (default: `/srv/wordpress`) |
+| `DO_REGISTRY_NAME` | DO Container Registry name (for `deploy-image.yml`) |
+| `DATABASE_USER` | |
+| `DATABASE_PASSWORD` | |
+| `DATABASE_ROOT_PASSWORD` | |
+| `WORDPRESS_ADMIN_USER` | |
+| `WORDPRESS_ADMIN_PASSWORD` | |
+| `WORDPRESS_ADMIN_EMAIL` | |
+
+`DROPLET_HOST` is **not** required upfront — the bootstrap job creates a Droplet on first run and prints the IP.
+
+---
+
+## Troubleshooting
+
+- **Stop local MySQL** before bringing up containers — it conflicts with the database container:
+  `sudo systemctl stop mysql`
+
+- **Do not edit docker-compose.yml while containers are running** — bring the stack down first.
+
+- **Useful Docker commands:**
+  ```bash
+  docker compose ps                        # show running services
+  docker compose logs <service>            # view logs for a service
+  docker compose down                      # stop and remove containers
+  docker volume prune                      # remove unused volumes
+  ```
+
+---
 
 ## Acknowledgments
 
--   Repo originally started from - [Wazoo's Github Repo of Local Wordpress development](https://github.com/wazooinc/local-wordpress-development)
-
-    -   Going off of material from [Docker Setup for Local WordPress Development](https://www.youtube.com/watch?v=GG2k-La5t3or) for step-by-step guide
-    -   And [Adding SSL to Wordpress](https://www.youtube.com/watch?v=HH4s3x1PiA4) (aka pt2) which will need a [self-signed certificates tool](https://github.com/FiloSottile/mkcert) local development
-
--   And mixing with [How To Install WordPress With Docker Compose](https://www.digitalocean.com/community/tutorials/how-to-install-wordpress-with-docker-compose) another step-by-step for refresher
-
--   and my own docker experience since it had been some 3+ years since I have worked with docker and web stuff
+- Originally derived from [Wazoo's local-wordpress-development](https://github.com/wazooinc/local-wordpress-development)
+- [How To Install WordPress With Docker Compose](https://www.digitalocean.com/community/tutorials/how-to-install-wordpress-with-docker-compose) — DigitalOcean tutorial
+- [Adding SSL to WordPress](https://www.youtube.com/watch?v=HH4s3x1PiA4) — Let's Encrypt + nginx setup
+- [mkcert](https://github.com/FiloSottile/mkcert) — self-signed certs for local HTTPS
