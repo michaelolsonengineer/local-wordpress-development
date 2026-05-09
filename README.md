@@ -17,6 +17,7 @@ A Docker-based local WordPress development environment with full CI/CD for Digit
 All dependencies are installed automatically by `./wporchestrator install_dependencies` on Ubuntu/Debian.
 
 Manual install if preferred:
+
 - [Docker](https://docs.docker.com/) + [Docker Compose plugin](https://docs.docker.com/compose/)
 - `yq` — `sudo apt-get install -y yq` (Ubuntu 24.04+) or `snap install yq`
 - `mysql-client` — `sudo apt-get install -y mysql-client`
@@ -45,16 +46,16 @@ WordPress will be available at `http://<DOMAIN_NAME>` (or `http://localhost` for
 
 ## wporchestrator Commands
 
-| Command | Description |
-|---|---|
-| `first-time-bring-up [--yes]` | Install deps, start containers, run WordPress setup |
-| `install_dependencies` | Install system packages (Docker, mysql-client, yq, etc.) |
-| `wp-setup [--yes]` | Run WordPress configuration (title, admin user, plugins, permalinks) |
-| `restore-from-backup <file>` | Restore an UpdraftPlus `.db.gz` backup, fix URLs, fetch fonts |
-| `fix-urls` | Reset `siteurl`/`home` to localhost after a production DB restore |
-| `enable-ssl-after-first-time-bring-up` | Obtain Let's Encrypt certs and switch site to HTTPS |
-| `logs` | Tail logs from all Docker Compose services |
-| `nuke` | Destroy all containers and volumes (**destructive**) |
+| Command                                | Description                                                          |
+| -------------------------------------- | -------------------------------------------------------------------- |
+| `first-time-bring-up [--yes]`          | Install deps, start containers, run WordPress setup                  |
+| `install_dependencies`                 | Install system packages (Docker, mysql-client, yq, etc.)             |
+| `wp-setup [--yes]`                     | Run WordPress configuration (title, admin user, plugins, permalinks) |
+| `restore-from-backup <file>`           | Restore an UpdraftPlus `.db.gz` backup, fix URLs, fetch fonts        |
+| `fix-urls`                             | Reset `siteurl`/`home` to localhost after a production DB restore    |
+| `enable-ssl-after-first-time-bring-up` | Obtain Let's Encrypt certs and switch site to HTTPS                  |
+| `logs`                                 | Tail logs from all Docker Compose services                           |
+| `nuke`                                 | Destroy all containers and volumes (**destructive**)                 |
 
 `--yes` / `--non-interactive` — skips all interactive prompts; requires credentials set in `.env`.
 
@@ -67,6 +68,7 @@ WordPress will be available at `http://<DOMAIN_NAME>` (or `http://localhost` for
 ```
 
 This will:
+
 1. Copy the backup into the database container
 2. Import it (directly via `mysql`, bypassing WP-CLI TLS issues with MySQL 8)
 3. Auto-detect and write the table prefix to `.env`
@@ -93,6 +95,7 @@ Requires `PRODUCTION_DOMAIN` set in `.env`.
 Four workflows are included in `.github/workflows/`:
 
 ### `deploy-preview.yml` — PR Preview Environments
+
 - Triggers on pull requests to `main` or `develop`
 - Creates an ephemeral DigitalOcean Droplet named `pr-<N>` (Ubuntu 24.04, Docker pre-installed)
 - Clones the branch, writes a minimal `.env`, runs `./wporchestrator first-time-bring-up --yes`
@@ -100,33 +103,36 @@ Four workflows are included in `.github/workflows/`:
 - Destroys the Droplet when the PR is closed (`delete-preview.yml`)
 
 ### `deploy-app.yml` — Deploy to Production Droplet
+
 - Triggers on push to `main` or `develop`
 - SSHes into `DROPLET_HOST`, pulls latest, runs `docker compose up -d`
 
 ### `deploy-image.yml` — Build & Push Docker Image
+
 - Builds a custom WordPress image, pushes to DigitalOcean Container Registry
 - SSHes into Droplet, pulls new image, restarts services
 
 ### `delete-preview.yml` — Destroy PR Preview
+
 - Triggers when a PR is closed
 - Finds and destroys the `pr-<N>` Droplet via `doctl`
 
 ### Required GitHub Secrets
 
-| Secret | Description |
-|---|---|
-| `DIGITALOCEAN_ACCESS_TOKEN` | DO personal access token |
-| `DO_SSH_KEY_FINGERPRINT` | Fingerprint of SSH key registered in DO account |
-| `DROPLET_SSH_KEY` | Private key matching `DO_SSH_KEY_FINGERPRINT` |
-| `DROPLET_USER` | SSH user on the Droplet (default: `root`) |
-| `DEPLOY_PATH` | Path on Droplet to clone repo (default: `/srv/wordpress`) |
-| `DO_REGISTRY_NAME` | DO Container Registry name (for `deploy-image.yml`) |
-| `DATABASE_USER` | |
-| `DATABASE_PASSWORD` | |
-| `DATABASE_ROOT_PASSWORD` | |
-| `WORDPRESS_ADMIN_USER` | |
-| `WORDPRESS_ADMIN_PASSWORD` | |
-| `WORDPRESS_ADMIN_EMAIL` | |
+| Secret                      | Description                                               |
+| --------------------------- | --------------------------------------------------------- |
+| `DIGITALOCEAN_ACCESS_TOKEN` | DO personal access token                                  |
+| `DO_SSH_KEY_FINGERPRINT`    | Fingerprint of SSH key registered in DO account           |
+| `DROPLET_SSH_KEY`           | Private key matching `DO_SSH_KEY_FINGERPRINT`             |
+| `DROPLET_USER`              | SSH user on the Droplet (default: `root`)                 |
+| `DEPLOY_PATH`               | Path on Droplet to clone repo (default: `/srv/wordpress`) |
+| `DO_REGISTRY_NAME`          | DO Container Registry name (for `deploy-image.yml`)       |
+| `DATABASE_USER`             |                                                           |
+| `DATABASE_PASSWORD`         |                                                           |
+| `DATABASE_ROOT_PASSWORD`    |                                                           |
+| `WORDPRESS_ADMIN_USER`      |                                                           |
+| `WORDPRESS_ADMIN_PASSWORD`  |                                                           |
+| `WORDPRESS_ADMIN_EMAIL`     |                                                           |
 
 `DROPLET_HOST` is **not** required upfront — the bootstrap job creates a Droplet on first run and prints the IP.
 
