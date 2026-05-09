@@ -137,8 +137,9 @@ jobs:
 
             mkdir -p src/{themes,plugins,uploads}
 
-            # Fix ownership so the wordpress container (www-data) can write to the bind-mount
-            chown -R www-data:www-data src/
+            # Host www-data (uid 33) != container www-data (uid 82 on Alpine).
+            # For a preview environment, open permissions so both can write freely.
+            chmod -R 777 src/
 
             # Tear down any leftover containers from a previous run on this Droplet
             docker compose down --remove-orphans 2>/dev/null || true
