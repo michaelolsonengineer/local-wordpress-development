@@ -64,7 +64,7 @@ jobs:
 
           if [ -n "$EXISTING_IP" ]; then
             echo "Droplet '${DROPLET_NAME}' already exists at ${EXISTING_IP}."
-            echo "ip=${EXISTING_IP}" >> "$GITHUB_OUTPUT"
+            echo "ip=$(echo "${EXISTING_IP}" | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -82,7 +82,7 @@ jobs:
             --format Name,PublicIPv4 --no-header \
             | awk -v name="${DROPLET_NAME}" '$1 == name {print $2}')
 
-          echo "ip=${NEW_IP}" >> "$GITHUB_OUTPUT"
+          echo "ip=$(echo "${NEW_IP}" | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
           echo ""
           echo "================================================================"
           echo "  Droplet created at: ${NEW_IP}"

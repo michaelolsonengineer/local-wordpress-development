@@ -44,6 +44,8 @@ jobs:
   deploy-preview:
     name: Deploy preview for PR #${{ github.event.pull_request.number || inputs.pr_number }}
     runs-on: ubuntu-latest
+    # Don't deploy if the PR was already closed/merged
+    if: github.event.pull_request.state != 'closed'
 
     env:
       PREVIEW_NAME: pr-${{ github.event.pull_request.number || inputs.pr_number }}
